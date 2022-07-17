@@ -1,7 +1,7 @@
-const assert = require('assert');
-const { should } = require('micro-should');
-const P = require('..');
-const { hex } = require('@scure/base');
+import assert from 'assert';
+import { should } from 'micro-should';
+import { hex } from '@scure/base';
+import * as P from '../index.js';
 
 should('Packed U32BE', () => {
   const be32 = [
@@ -287,4 +287,4 @@ should('Writer/bits: throw on non-full (4 byte)', () => {
   assert.deepStrictEqual(w.buffer, new Uint8Array([0, 0, 0, 0, 1, 2, 3]));
 });
 
-if (require.main === module) should.run();
+should.run();
