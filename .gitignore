@@ -3,3 +3,4 @@ node_modules
 /lib
 /index.js
 /index.d.ts
+/index.d.ts.map
