@@ -3,7 +3,7 @@
 > Less painful binary encoding / decoding
 
 Allows declarative definition for complex structures (like in C/Rust) via composable primitives,
-which allows encoding these structures into bytes and parsing back.
+which enables encoding these structures into bytes and parsing back.
 
 ```ts
 import * as P from 'micro-packed';
@@ -25,7 +25,7 @@ let s = P.struct({
 })
 ```
 
-## Other utils
+## Utils
 
 ### Tuple
 
