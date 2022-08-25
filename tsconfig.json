@@ -4,7 +4,10 @@
     "declaration": true,
     "declarationMap": true,
     "target": "es2020",
-    "lib": ["es2020"],
+    "lib": [
+      "es2020",
+      "dom"
+    ],
     "module": "node16",
     "moduleResolution": "node16",
     "outDir": ".",
@@ -15,7 +18,8 @@
     "baseUrl": ".",
   },
   "include": [
-    "index.ts"
+    "index.ts",
+    "_type_test.ts"
   ],
   "exclude": [
     "node_modules",

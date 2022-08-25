@@ -12,20 +12,59 @@ let s = P.struct({
   field1: P.U32BE,
   // strings, bytes, prefix and array first arg is length. It can be:
   // - dynamic: via CoderType<number>. First U8 in this case if length of elemnt
-  field2: P.string(U8),
+  field2: P.string(P.U8),
   // - fixed length, reads 32 bytes, no prefix
   field3: P.bytes(32),
   // NOTE: array uses prefix as element count, not byte count!
   field4: P.array(P.U16BE, P.struct({subField1: P.U64BE, subField2: P.string(10) }))
   // - string to access previous fields in structure
-  field5: 'field4.subField',
-  // - null -- read until buffer exhausted
+  field5: P.array('field1', P.U8), // Array of size 'field1' of U8
+  // Use sub-structure
   field6: other,
-  field7: P.string(null)
+  field7: P.string(null),
+  // - null -- read until buffer exhausted
+  field8: P.array(null, P.U64BE),
 })
 ```
 
 ## Utils
+
+### Array
+
+Probably most powerful building block
+
+```ts
+import * as P from 'micro-packed';
+let a1 = P.array(P.U16BE, child); // Dynamic size array (prefixed with P.U16BE number of array length)
+let a2 = P.array(4, child); // Fixed size array
+let a3 = P.array(null, child); // Unknown size array, will parse until end of buffer
+let a4 = P.array(new Uint8Array([0]), child); // zero-terminated array (NOTE: terminator can be any buffer)
+```
+
+### Bytes
+
+Same as array of bytes, should be a bit faster than generic implementation, also returns Uint8Array,
+instead of array of ints
+
+```ts
+import * as P from 'micro-packed';
+// same as
+let bytes = (len) => P.array(len, P.U8);
+const b1 = bytes(P.U16BE);
+const b2 = bytes(P.U16BE, true); // bytes in little-endian order
+```
+
+### String
+
+Same as bytes, but returns utf8 decoded string
+
+```ts
+import * as P from 'micro-packed';
+const s = P.string(P.U16BE);
+s.decode(new Uint8Array([116, 101, 115, 116])); // -> test
+const s2 = P.cstring; // NUL-terminated strings
+s.decode(new Uint8Array([116, 101, 115, 116, 0])); // -> test
+```
 
 ### Tuple
 
@@ -34,7 +73,7 @@ Same as struct, but without fields names
 ```ts
 import * as P from 'micro-packed';
 
-let s = tuple([P.U32BE, P.U8, P.bytes(32), ...])
+let s = P.tuple([P.U32BE, P.U8, P.bytes(32), ...])
 ```
 
 ### Map
@@ -45,7 +84,7 @@ Allows to map encoded values to string
 
 ```ts
 import * as P from 'micro-packed';
-let s = map(P.U8, {
+let s = P.map(P.U8, {
   name1: 1,
   name2: 2,
 });
@@ -114,7 +153,6 @@ P.padLeft(3, U8).encode(123); // Uint8Array([0, 0, 123])
 P.padRight(3, U8).encode(123); // Uint8Array([123, 0, 0])
 ```
 
-
 ### Flag
 
 Decodes as true if the value is the same.
@@ -140,6 +178,61 @@ Decodes/encodes value only if prefixed flag is true (or encodes default value).
 ```ts
 import * as P from 'micro-packed';
 const s = P.optional(P.bool, P.U32BE, 123);
+```
+
+### Lazy
+
+Allows definition of circular structures
+
+```ts
+import * as P from 'micro-packed';
+
+type Tree = { name: string; childs: Tree[] };
+const tree = P.struct({
+  name: P.cstring,
+  childs: P.array(
+    P.U16BE,
+    P.lazy((): P.CoderType<Tree> => tree)
+  ),
+});
+```
+
+### Dict
+
+Converts array (key, value) tuples to dict/object/hashmap:
+
+```ts
+import * as P from 'micro-packed';
+
+const dict: P.CoderType<Record<string, number>> = P.apply(
+  P.array(P.U16BE, P.tuple([P.cstring, P.U32LE] as const)),
+  P.coders.dict()
+);
+```
+
+### Validate
+
+Validation of value before encoding and after decoding:
+
+```ts
+import * as P from 'micro-packed';
+
+const val = (n: number) => {
+  if (n > 10) throw new Error(`${n} > 10`);
+  return n;
+};
+
+const RangedInt = P.validate(P.U32LE, val); // will check in both encoding and decoding
+```
+
+### Debug
+
+Easy debug (via console.log), just wrap specific coder for it:
+
+```ts
+import * as P from 'micro-packed';
+
+const debugInt = P.debug(P.U32LE); // Will print info to console
 ```
 
 ### Primitive types

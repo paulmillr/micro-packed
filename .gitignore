@@ -4,3 +4,6 @@ node_modules
 /index.js
 /index.d.ts
 /index.d.ts.map
+/_type_test.js
+/_type_test.d.ts
+/_type_test.d.ts.map

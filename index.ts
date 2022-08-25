@@ -1,4 +1,17 @@
-import { utf8, hex as baseHex, base64, str as baseStr, bytes as baseBytes } from '@scure/base';
+import * as base from '@scure/base';
+
+/**
+ * TODO:
+ * - Holes, simplify pointers. Hole is some sized element which is skipped at encoding,
+ *   but later other elements can write to it by path
+ * - Composite / tuple keys for dict
+ * - Web UI for easier debugging. We can wrap every coder to something that would write
+ *   start & end positions to; and we can colorize specific bytes used by specific coder
+ */
+
+// Useful default values
+export const EMPTY = new Uint8Array(); // Empty bytes array
+export const NULL = new Uint8Array([0]); // NULL
 
 export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -17,6 +30,8 @@ export function concatBytes(...arrays: Uint8Array[]): Uint8Array {
   }
   return result;
 }
+
+export const isBytes = (b: unknown): b is Bytes => b instanceof Uint8Array;
 
 // Types
 export type Bytes = Uint8Array;
@@ -40,8 +55,30 @@ export interface BytesCoderStream<T> {
 }
 
 export type CoderType<T> = BytesCoderStream<T> & BytesCoder<T>;
+export type Sized<T> = CoderType<T> & { size: number };
 export type UnwrapCoder<T> = T extends CoderType<infer U> ? U : T;
-export type Length = CoderType<number> | CoderType<bigint> | number | string | null;
+
+// NOTE: we can't have terminator separate function, since it won't know about boundaries
+// E.g. array of U16LE ([1,2,3]) would be [1, 0, 2, 0, 3, 0]
+// But terminator will find array at index '1', which happens to be inside of an element itself
+export type Length = CoderType<number> | CoderType<bigint> | number | Bytes | string | null;
+
+type ArrLike<T> = Array<T> | ReadonlyArray<T>;
+// prettier-ignore
+export type TypedArray =
+  | Uint8Array  | Int8Array | Uint8ClampedArray
+  | Uint16Array | Int16Array
+  | Uint32Array | Int32Array;
+
+// as const returns readonly stuff, remove readonly property
+export type Writable<T> = T extends {}
+  ? T extends TypedArray
+    ? T
+    : {
+        -readonly [P in keyof T]: Writable<T[P]>;
+      }
+  : T;
+
 type Values<T> = T[keyof T];
 type NonUndefinedKey<T, K extends keyof T> = T[K] extends undefined ? never : K;
 type NullableKey<T, K extends keyof T> = T[K] extends NonNullable<T[K]> ? never : K;
@@ -61,10 +98,6 @@ type StructRecord<T extends Record<string, any>> = {
 };
 
 type StructOut = Record<string, any>;
-
-type TupleFields<T> = {
-  [P in keyof T]: CoderType<T[P]>;
-};
 type PadFn = (i: number) => number;
 
 // Utils
@@ -79,7 +112,7 @@ export class Reader {
     public fieldPath: string[] = []
   ) {}
   err(msg: string) {
-    return new Error(`Reader(${this.fieldPath.join('.')}): ${msg}`);
+    return new Error(`Reader(${this.fieldPath.join('/')}): ${msg}`);
   }
   // read bytes by absolute offset
   absBytes(n: number) {
@@ -88,6 +121,7 @@ export class Reader {
   }
   bytes(n: number, peek = false) {
     if (this.bitPos) throw this.err('readBytes: bitPos not empty');
+    if (!Number.isFinite(n)) throw this.err(`readBytes: wrong length=${n}`);
     if (this.pos + n > this.data.length) throw this.err('readBytes: Unexpected end of buffer');
     const slice = this.data.subarray(this.pos, this.pos + n);
     if (!peek) this.pos += n;
@@ -108,12 +142,13 @@ export class Reader {
     if (isCoder(len)) byteLen = Number(len.decodeStream(this));
     else if (typeof len === 'number') byteLen = len;
     else if (typeof len === 'string') byteLen = getPath(this.path, len.split('/'));
+    if (typeof byteLen === 'bigint') byteLen = Number(byteLen);
     if (typeof byteLen !== 'number') throw this.err(`Wrong length: ${byteLen}`);
     return byteLen;
   }
   // Note: bits reads in BE (left to right) mode: (0b1000_0000).readBits(1) == 1
   bits(bits: number) {
-    if (bits > 32) throw new Error('BitReader: cannot read more than 32 bits in single call');
+    if (bits > 32) throw this.err('BitReader: cannot read more than 32 bits in single call');
     let out = 0;
     while (bits) {
       if (!this.bitPos) {
@@ -129,10 +164,22 @@ export class Reader {
     // Fix signed integers
     return out >>> 0;
   }
+  find(needle: Bytes, pos = this.pos) {
+    if (!isBytes(needle)) throw this.err(`find: needle is not bytes! ${needle}`);
+    if (this.bitPos) throw this.err('findByte: bitPos not empty');
+    if (!needle.length) throw this.err(`find: needle is empty`);
+    // indexOf should be faster than full equalBytes check
+    for (let idx = pos; (idx = this.data.indexOf(needle[0], idx)) !== -1; idx++) {
+      if (idx === -1) return;
+      const leftBytes = this.data.length - idx;
+      if (leftBytes < needle.length) return;
+      if (equalBytes(needle, this.data.subarray(idx, idx + needle.length))) return idx;
+    }
+  }
   finish() {
     if (this.isEnd() || this.hasPtr) return;
     throw this.err(
-      `${this.leftBytes} bytes ${this.bitPos} bits left after unpack: ${baseHex.encode(
+      `${this.leftBytes} bytes ${this.bitPos} bits left after unpack: ${base.hex.encode(
         this.data.slice(this.pos)
       )}`
     );
@@ -147,7 +194,7 @@ export class Writer {
   bitPos = 0;
   constructor(public path: StructOut[] = [], public fieldPath: string[] = []) {}
   err(msg: string) {
-    return new Error(`Writer(${this.fieldPath.join('.')}): ${msg}`);
+    return new Error(`Writer(${this.fieldPath.join('/')}): ${msg}`);
   }
   bytes(b: Bytes) {
     if (this.bitPos) throw this.err('writeBytes: ends with non-empty bit buffer');
@@ -176,6 +223,7 @@ export class Writer {
     let byteLen;
     if (typeof len === 'number') byteLen = len;
     else if (typeof len === 'string') byteLen = getPath(this.path, len.split('/'));
+    if (typeof byteLen === 'bigint') byteLen = Number(byteLen);
     if (byteLen === undefined || byteLen !== value)
       throw this.err(`Wrong length: ${byteLen} len=${len} exp=${value}`);
   }
@@ -215,9 +263,9 @@ export function wrap<T>(inner: BytesCoderStream<T>): BytesCoderStream<T> & Bytes
   return {
     ...inner,
     encode: (value: T): Bytes => {
-      const p = new Writer();
-      inner.encodeStream(p, value);
-      return p.buffer;
+      const w = new Writer();
+      inner.encodeStream(w, value);
+      return w.buffer;
     },
     decode: (data: Bytes): T => {
       const r = new Reader(data);
@@ -237,7 +285,7 @@ function getPath(objPath: Record<string, any>[], path: string[]): Option<any> {
   }
   let cur = objPath.pop();
   for (; i < path.length; i++) {
-    if (!cur || !cur[path[i]]) return undefined;
+    if (!cur || cur[path[i]] === undefined) return undefined;
     cur = cur[path[i]];
   }
   return cur;
@@ -252,7 +300,124 @@ export function isCoder<T>(elm: any): elm is CoderType<T> {
   );
 }
 
-// Coders
+// Coders (like in @scure/base) for common operations
+// TODO:
+// - move to base? very generic converters, not releated to base and packed
+// - encode/decode -> from/to? coder->convert?
+function dict<T>(): base.Coder<[string, T][], Record<string, T>> {
+  return {
+    encode: (from: [string, T][]): Record<string, T> => {
+      const to: Record<string, T> = {};
+      for (const [name, value] of from) {
+        if (to[name] !== undefined)
+          throw new Error(`coders.dict: same key(${name}) appears twice in struct`);
+        to[name] = value;
+      }
+      return to;
+    },
+    decode: (to: Record<string, T>): [string, T][] => Object.entries(to),
+  };
+}
+// Safely converts bigint to number
+// Sometimes pointers / tags use u64 or other big numbers which cannot be represented by number,
+// but we still can use them since real value will be smaller than u32
+const number: base.Coder<bigint, number> = {
+  encode: (from: bigint): number => {
+    if (from > BigInt(Number.MAX_SAFE_INTEGER))
+      throw new Error(`coders.number: element bigger than MAX_SAFE_INTEGER=${from}`);
+    return Number(from);
+  },
+  decode: (to: number): bigint => BigInt(to),
+};
+// TODO: replace map with this?
+type Enum = { [k: string]: number | string } & { [k: number]: string };
+// Doesn't return numeric keys, so it's fine
+type EnumKeys<T extends Enum> = keyof T;
+function tsEnum<T extends Enum>(e: T): base.Coder<number, EnumKeys<T>> {
+  return {
+    encode: (from: number): string => e[from],
+    decode: (to: string): number => e[to] as number,
+  };
+}
+
+function decimal(precision: number) {
+  const decimalMask = 10n ** BigInt(precision);
+  return {
+    encode: (from: bigint): string => {
+      let s = (from < 0n ? -from : from).toString(10);
+      let sep = s.length - precision;
+      if (sep < 0) {
+        s = s.padStart(s.length - sep, '0');
+        sep = 0;
+      }
+      let i = s.length - 1;
+      for (; i >= sep && s[i] === '0'; i--);
+      let [int, frac] = [s.slice(0, sep), s.slice(sep, i + 1)];
+      if (!int) int = '0';
+      if (from < 0n) int = '-' + int;
+      if (!frac) return int;
+      return `${int}.${frac}`;
+    },
+    decode: (to: string): bigint => {
+      let neg = false;
+      if (to.startsWith('-')) {
+        neg = true;
+        to = to.slice(1);
+      }
+      let sep = to.indexOf('.');
+      sep = sep === -1 ? to.length : sep;
+      const [intS, fracS] = [to.slice(0, sep), to.slice(sep + 1)];
+      const int = BigInt(intS) * decimalMask;
+      const fracLen = Math.min(fracS.length, precision);
+      const frac = BigInt(fracS.slice(0, fracLen)) * 10n ** BigInt(precision - fracLen);
+      const value = int + frac;
+      return neg ? -value : value;
+    },
+  };
+}
+
+// TODO: export from @scure/base?
+type BaseInput<F> = F extends base.Coder<infer T, any> ? T : never;
+type BaseOutput<F> = F extends base.Coder<any, infer T> ? T : never;
+
+/**
+ * Allows to split big conditional coders into a small one; also sort of parser combinator:
+ *
+ *   `encode = [Ae, Be]; decode = [Ad, Bd]`
+ *   ->
+ *   `match([{encode: Ae, decode: Ad}, {encode: Be; decode: Bd}])`
+ *
+ * 1. It is easier to reason: encode/decode of specific part are closer to each other
+ * 2. Allows composable coders and ability to add conditions on runtime
+ * @param lst
+ * @returns
+ */
+function match<
+  L extends base.Coder<unknown | undefined, unknown | undefined>[],
+  I = { [K in keyof L]: NonNullable<BaseInput<L[K]>> }[number],
+  O = { [K in keyof L]: NonNullable<BaseOutput<L[K]>> }[number]
+>(lst: L): base.Coder<I, O> {
+  return {
+    encode: (from: I): O => {
+      for (const c of lst) {
+        const elm = c.encode(from);
+        if (elm !== undefined) return elm as O;
+      }
+      throw new Error(`match/encode: cannot find match in ${from}`);
+    },
+    decode: (to: O): I => {
+      for (const c of lst) {
+        const elm = c.decode(to);
+        if (elm !== undefined) return elm as I;
+      }
+      throw new Error(`match/decode: cannot find match in ${to}`);
+    },
+  };
+}
+
+export const coders = { dict, number, tsEnum, decimal, match };
+
+// PackedCoders
 export const bits = (len: number): CoderType<number> =>
   wrap({
     encodeStream: (w: Writer, value: number) => w.bits(value, len),
@@ -309,12 +474,7 @@ export const I64BE = bigint(8, false, true);
 
 export const int = (size: number, le = false, signed = false): CoderType<number> => {
   if (size > 6) throw new Error('int supports size up to 6 bytes (48 bits), for other use bigint');
-  const inner = bigint(size, le, signed);
-  return wrap({
-    size,
-    encodeStream: (w: Writer, value: number) => inner.encodeStream(w, BigInt(value)),
-    decodeStream: (r: Reader): number => Number(inner.decodeStream(r)),
-  });
+  return apply(bigint(size, le, signed), coders.number);
 };
 
 export const U32LE = int(4, true);
@@ -340,16 +500,25 @@ export const bool: CoderType<boolean> = wrap({
   },
 });
 
+// Can be done w array, but specific implementation should be
+// faster: no need to create js array of numbers.
 export const bytes = (len: Length, le = false): CoderType<Bytes> =>
   wrap({
     size: typeof len === 'number' ? len : undefined,
     encodeStream: (w: Writer, value: Bytes) => {
-      if (!(value instanceof Uint8Array)) throw w.err(`bytes: invalid value ${value}`);
-      w.length(len, value.length);
+      if (!isBytes(value)) throw w.err(`bytes: invalid value ${value}`);
+      if (!isBytes(len)) w.length(len, value.length);
       w.bytes(le ? swap(value) : value);
+      if (isBytes(len)) w.bytes(len);
     },
     decodeStream: (r: Reader): Bytes => {
-      const bytes = r.bytes(len === null ? r.leftBytes : r.length(len));
+      let bytes: Bytes;
+      if (isBytes(len)) {
+        const tPos = r.find(len);
+        if (!tPos) throw r.err(`bytes: cannot find terminator`);
+        bytes = r.bytes(tPos - r.pos);
+        r.bytes(len.length);
+      } else bytes = r.bytes(len === null ? r.leftBytes : r.length(len));
       return le ? swap(bytes) : bytes;
     },
   });
@@ -358,10 +527,12 @@ export const string = (len: Length, le = false): CoderType<string> => {
   const inner = bytes(len, le);
   return wrap({
     size: inner.size,
-    encodeStream: (w: Writer, value: string) => inner.encodeStream(w, utf8.decode(value)),
-    decodeStream: (r: Reader): string => utf8.encode(inner.decodeStream(r)),
+    encodeStream: (w: Writer, value: string) => inner.encodeStream(w, base.utf8.decode(value)),
+    decodeStream: (r: Reader): string => base.utf8.encode(inner.decodeStream(r)),
   });
 };
+
+export const cstring = string(NULL);
 
 export const hex = (len: Length, le = false, withZero = false): CoderType<string> => {
   const inner = bytes(len, le);
@@ -370,14 +541,57 @@ export const hex = (len: Length, le = false, withZero = false): CoderType<string
     encodeStream: (w: Writer, value: string) => {
       if (withZero && !value.startsWith('0x'))
         throw new Error('hex(withZero=true).encode input should start with 0x');
-      const bytes = baseHex.decode(withZero ? value.slice(2) : value);
+      const bytes = base.hex.decode(withZero ? value.slice(2) : value);
       return inner.encodeStream(w, bytes);
     },
     decodeStream: (r: Reader): string =>
-      (withZero ? '0x' : '') + baseHex.encode(inner.decodeStream(r)),
+      (withZero ? '0x' : '') + base.hex.encode(inner.decodeStream(r)),
   });
 };
-// TODO: export from base? needs support of 0x in micro-base
+
+// Interoperability with base
+export function apply<T, F>(inner: CoderType<T>, b: base.Coder<T, F>): CoderType<F> {
+  if (!isCoder(inner)) throw new Error(`apply: invalid inner value ${inner}`);
+  return wrap({
+    size: inner.size,
+    encodeStream: (w: Writer, value: F) => {
+      let innerValue;
+      try {
+        innerValue = b.decode(value);
+      } catch (e) {
+        throw w.err('' + e);
+      }
+      return inner.encodeStream(w, innerValue);
+    },
+    decodeStream: (r: Reader): F => {
+      const innerValue = inner.decodeStream(r);
+      try {
+        return b.encode(innerValue);
+      } catch (e) {
+        throw r.err('' + e);
+      }
+    },
+  });
+}
+// Additional check of values both on encode and decode steps.
+// E.g. to force uint32 to be 1..10
+export function validate<T>(inner: CoderType<T>, fn: (elm: T) => T): CoderType<T> {
+  if (!isCoder(inner)) throw new Error(`validate: invalid inner value ${inner}`);
+  return wrap({
+    size: inner.size,
+    encodeStream: (w: Writer, value: T) => inner.encodeStream(w, fn(value)),
+    decodeStream: (r: Reader): T => fn(inner.decodeStream(r)),
+  });
+}
+
+export function lazy<T>(fn: () => CoderType<T>): CoderType<T> {
+  return wrap({
+    encodeStream: (w: Writer, value: T) => fn().encodeStream(w, value),
+    decodeStream: (r: Reader): T => fn().decodeStream(r),
+  });
+}
+
+// TODO: export from base? Must support 0x in micro-base
 type baseFmt =
   | 'utf8'
   | 'hex'
@@ -391,38 +605,54 @@ export const bytesFormatted = (len: Length, fmt: baseFmt, le = false) => {
   const inner = bytes(len, le);
   return wrap({
     size: inner.size,
-    encodeStream: (w: Writer, value: string) => inner.encodeStream(w, baseBytes(fmt, value)),
-    decodeStream: (r: Reader): string => baseStr(fmt, inner.decodeStream(r)),
+    encodeStream: (w: Writer, value: string) => inner.encodeStream(w, base.bytes(fmt, value)),
+    decodeStream: (r: Reader): string => base.str(fmt, inner.decodeStream(r)),
   });
 };
 
-export const flag = (flagValue: Bytes): CoderType<boolean> =>
+// Returns true if some marker exists, otherwise false. Xor argument flips behaviour
+export const flag = (flagValue: Bytes, xor = false): CoderType<boolean> =>
   wrap({
     size: flagValue.length,
     encodeStream: (w: Writer, value: boolean) => {
-      if (value) w.bytes(flagValue);
+      if (!!value !== xor) w.bytes(flagValue);
     },
     decodeStream: (r: Reader): boolean => {
-      if (!equalBytes(r.bytes(flagValue.length, true), flagValue)) return false;
-      r.bytes(flagValue.length);
-      return true;
+      let hasFlag = r.leftBytes >= flagValue.length;
+      if (hasFlag) {
+        hasFlag = equalBytes(r.bytes(flagValue.length, true), flagValue);
+        // Found flag, advance cursor position
+        if (hasFlag) r.bytes(flagValue.length);
+      }
+      // hasFlag ^ xor
+      return hasFlag !== xor;
     },
   });
 
+// Decode/encode only if flag found
 export function flagged<T>(
-  path: string,
+  path: string | BytesCoderStream<boolean>,
   inner: BytesCoderStream<T>,
   def?: T
 ): CoderType<Option<T>> {
   if (!isCoder(inner)) throw new Error(`flagged: invalid inner value ${inner}`);
-  const _path = path.split('/');
   return wrap({
     encodeStream: (w: Writer, value: Option<T>) => {
-      if (getPath(w.path, _path)) inner.encodeStream(w, value!);
-      else if (def) inner.encodeStream(w, def);
+      if (typeof path === 'string') {
+        if (getPath(w.path, path.split('/'))) inner.encodeStream(w, value);
+        else if (def) inner.encodeStream(w, def);
+      } else {
+        path.encodeStream(w, !!value);
+        if (!!value) inner.encodeStream(w, value);
+        else if (def) inner.encodeStream(w, def);
+      }
     },
     decodeStream: (r: Reader): Option<T> => {
-      if (getPath(r.path, _path)) return inner.decodeStream(r);
+      let hasFlag = false;
+      if (typeof path === 'string') hasFlag = getPath(r.path, path.split('/'));
+      else hasFlag = path.decodeStream(r);
+      // If there is a flag -- decode and return value
+      if (hasFlag) return inner.decodeStream(r);
       else if (def) inner.decodeStream(r);
     },
   });
@@ -435,7 +665,6 @@ export function optional<T>(
 ): CoderType<Option<T>> {
   if (!isCoder(flag) || !isCoder(inner))
     throw new Error(`optional: invalid flag or inner value flag=${flag} inner=${inner}`);
-
   return wrap({
     size: def !== undefined && flag.size && inner.size ? flag.size + inner.size : undefined,
     encodeStream: (w: Writer, value: Option<T>) => {
@@ -459,7 +688,7 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
       const value = inner.decodeStream(r);
       if (
         (check && typeof value !== 'object' && value !== constant) ||
-        (constant instanceof Uint8Array && !equalBytes(constant, value as any))
+        (isBytes(constant) && !equalBytes(constant, value as any))
       ) {
         throw r.err(`magic: invalid value: ${value} !== ${constant}`);
       }
@@ -469,7 +698,7 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
 }
 
 export const magicBytes = (constant: Bytes | string): CoderType<undefined> => {
-  const c = typeof constant === 'string' ? utf8.decode(constant) : constant;
+  const c = typeof constant === 'string' ? base.utf8.decode(constant) : constant;
   return magic(bytes(c.length), c);
 };
 
@@ -485,10 +714,7 @@ export function constant<T>(c: T): CoderType<T> {
 function sizeof(fields: CoderType<any>[]): Option<number> {
   let size: Option<number> = 0;
   for (let f of fields) {
-    if (!f.size) {
-      size = undefined;
-      break;
-    }
+    if (!f.size) return;
     size += f.size;
   }
   return size;
@@ -496,9 +722,8 @@ function sizeof(fields: CoderType<any>[]): Option<number> {
 
 export function struct<T>(fields: StructRecord<T>): CoderType<StructInput<T>> {
   if (Array.isArray(fields)) throw new Error('Packed.Struct: got array instead of object');
-  const size = sizeof(Object.values(fields));
   return wrap({
-    size,
+    size: sizeof(Object.values(fields)),
     encodeStream: (w: Writer, value: StructInput<T>) => {
       if (typeof value !== 'object' || value === null)
         throw w.err(`struct: invalid value ${value}`);
@@ -525,13 +750,15 @@ export function struct<T>(fields: StructRecord<T>): CoderType<StructInput<T>> {
   });
 }
 
-export function tuple<T>(fields: TupleFields<T[]>): CoderType<T[]> {
+export function tuple<
+  T extends ArrLike<CoderType<any>>,
+  O = Writable<{ [K in keyof T]: UnwrapCoder<T[K]> }>
+>(fields: T): CoderType<O> {
   if (!Array.isArray(fields))
     throw new Error(`Packed.Tuple: got ${typeof fields} instead of array`);
-  const size = sizeof(fields);
   return wrap({
-    size,
-    encodeStream: (w: Writer, value: T[]) => {
+    size: sizeof(fields),
+    encodeStream: (w: Writer, value: O) => {
       if (!Array.isArray(value)) throw w.err(`tuple: invalid value ${value}`);
       w.path.push(value);
       for (let i = 0; i < fields.length; i++) {
@@ -541,8 +768,8 @@ export function tuple<T>(fields: TupleFields<T[]>): CoderType<T[]> {
       }
       w.path.pop();
     },
-    decodeStream: (r: Reader): T[] => {
-      let res: T[] = [];
+    decodeStream: (r: Reader): O => {
+      let res: any = [];
       r.path.push(res);
       for (let i = 0; i < fields.length; i++) {
         r.fieldPath.push('' + i);
@@ -555,19 +782,22 @@ export function tuple<T>(fields: TupleFields<T[]>): CoderType<T[]> {
   });
 }
 
-export function prefix<T>(len: Length, inner: CoderType<T>): CoderType<T> {
+type PrefixLength = string | number | CoderType<number> | CoderType<bigint>;
+export function prefix<T>(len: PrefixLength, inner: CoderType<T>): CoderType<T> {
   if (!isCoder(inner)) throw new Error(`prefix: invalid inner value ${inner}`);
+  if (isBytes(len)) throw new Error(`prefix: len cannot be Uint8Array`);
+  const b = bytes(len);
   return wrap({
     size: typeof len === 'number' ? len : undefined,
     encodeStream: (w: Writer, value: T) => {
       const wChild = new Writer(w.path, w.fieldPath);
       inner.encodeStream(wChild, value);
-      const bytes = wChild.buffer;
-      w.length(len, bytes.length);
-      w.bytes(bytes);
+      b.encodeStream(w, wChild.buffer);
     },
-    decodeStream: (r: Reader): T =>
-      inner.decodeStream(new Reader(r.bytes(r.length(len)), r.path, r.fieldPath)),
+    decodeStream: (r: Reader): T => {
+      const data = b.decodeStream(r);
+      return inner.decodeStream(new Reader(data, r.path, r.fieldPath));
+    },
   });
 }
 
@@ -577,13 +807,39 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
     size: typeof len === 'number' && inner.size ? len * inner.size : undefined,
     encodeStream: (w: Writer, value: T[]) => {
       if (!Array.isArray(value)) throw w.err(`array: invalid value ${value}`);
-      w.length(len, value.length);
-      for (let elm of value) inner.encodeStream(w, elm);
+      if (!isBytes(len)) w.length(len, value.length);
+      for (const elm of value) {
+        const startPos = w.pos;
+        inner.encodeStream(w, elm);
+        if (isBytes(len)) {
+          // Terminator is bigger than elm size, so skip
+          if (len.length > w.pos - startPos) continue;
+          const data = w.buffer.subarray(startPos, w.pos);
+          // There is still possible case when multiple elements create terminator,
+          // but it is hard to catch here, will be very slow
+          if (equalBytes(data.subarray(0, len.length), len))
+            throw w.err(`array: inner element encoding same as separator. elm=${elm} data=${data}`);
+        }
+      }
+      if (isBytes(len)) w.bytes(len);
     },
     decodeStream: (r: Reader): T[] => {
       let res = [];
-      if (len === null) while (!r.isEnd()) res.push(inner.decodeStream(r));
-      else {
+      if (len === null)
+        while (!r.isEnd()) {
+          res.push(inner.decodeStream(r));
+          if (inner.size && r.leftBytes < inner.size) break;
+        }
+      else if (isBytes(len)) {
+        while (true) {
+          if (equalBytes(r.bytes(len.length, true), len)) {
+            // Advance cursor position if terminator found
+            r.bytes(len.length);
+            break;
+          }
+          res.push(inner.decodeStream(r));
+        }
+      } else {
         const length = r.length(len);
         for (let i = 0; i < length; i++) res.push(inner.decodeStream(r));
       }
@@ -637,6 +893,23 @@ export function tag<
       return { TAG, data: dataType.decodeStream(r) } as any;
     },
   });
+}
+// Takes {name: [value, coder]}
+export function mappedTag<
+  T extends Values<{
+    [P in keyof Variants]: { TAG: P; data: UnwrapCoder<Variants[P][1]> };
+  }>,
+  TagValue extends string | number,
+  Variants extends Record<string, [TagValue, CoderType<any>]>
+>(tagCoder: CoderType<TagValue>, variants: Variants): CoderType<T> {
+  if (!isCoder(tagCoder)) throw new Error(`mappedTag: invalid tag value ${tag}`);
+  const mapValue: Record<string, TagValue> = {};
+  const tagValue: Record<string, CoderType<any>> = {};
+  for (const key in variants) {
+    mapValue[key] = variants[key][0];
+    tagValue[key] = variants[key][1];
+  }
+  return tag(map(tagCoder, mapValue), tagValue) as any as CoderType<T>;
 }
 
 export function bitset<Names extends readonly string[]>(
@@ -751,28 +1024,44 @@ export function base64armor<T>(
   return {
     encode(value: T) {
       const data = inner.encode(value);
-      const encoded = base64.encode(data);
+      const encoded = base.base64.encode(data);
       let lines = [];
       for (let i = 0; i < encoded.length; i += lineLen) {
         const s = encoded.slice(i, i + lineLen);
         if (s.length) lines.push(`${encoded.slice(i, i + lineLen)}\n`);
       }
       let body = lines.join('');
-      if (checksum) body += `=${base64.encode(checksum(data))}\n`;
+      if (checksum) body += `=${base.base64.encode(checksum(data))}\n`;
       return `${markBegin}\n\n${body}${markEnd}\n`;
     },
     decode(s: string): T {
       let lines = s.replace(markBegin, '').replace(markEnd, '').trim().split('\n');
       lines = lines.map((l) => l.replace('\r', '').trim());
       if (checksum && lines[lines.length - 1].startsWith('=')) {
-        const body = base64.decode(lines.slice(0, -1).join(''));
+        const body = base.base64.decode(lines.slice(0, -1).join(''));
         const cs = lines[lines.length - 1].slice(1);
-        const realCS = base64.encode(checksum(body));
+        const realCS = base.base64.encode(checksum(body));
         if (realCS !== cs)
           throw new Error(`Base64Armor: invalid checksum ${cs} instead of ${realCS}`);
         return inner.decode(body);
       }
-      return inner.decode(base64.decode(lines.join('')));
+      return inner.decode(base.base64.decode(lines.join('')));
     },
   };
+}
+
+// Does nothing at all
+export const nothing = magic(bytes(0), EMPTY);
+
+export function debug<T>(inner: CoderType<T>): CoderType<T> {
+  if (!isCoder(inner)) throw new Error(`debug: invalid inner value ${inner}`);
+  const log = (name: string, rw: Reader | Writer, value: any) => {
+    console.log(`DEBUG/${name}(${rw.fieldPath.join('/')}):`, { type: typeof value, value });
+    return value;
+  };
+  return wrap({
+    size: inner.size,
+    encodeStream: (w: Writer, value: T) => inner.encodeStream(w, log('encode', w, value)),
+    decodeStream: (r: Reader): T => log('decode', r, inner.decodeStream(r)),
+  });
 }
