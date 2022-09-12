@@ -5,6 +5,12 @@
 Allows declarative definition for complex structures (like in C/Rust) via composable primitives,
 which enables encoding these structures into bytes and parsing back.
 
+Comes with an separate [debugger package](./debugger/).
+
+## Usage
+
+> npm install micro-packed
+
 ```ts
 import * as P from 'micro-packed';
 let other = P.struct({ a: U16BE, b: U16LE });
