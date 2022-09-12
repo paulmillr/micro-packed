@@ -6,7 +6,7 @@ Allows you to retain a bit more sanity when debugging.
 
 ## Usage
 
-`> npm i micro-packed-debugger`
+> npm i micro-packed-debugger
 
 ### Decode
 
