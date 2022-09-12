@@ -184,6 +184,12 @@ export class Reader {
       )}`
     );
   }
+  fieldPathPush(s: string) {
+    this.fieldPath.push(s);
+  }
+  fieldPathPop() {
+    this.fieldPath.pop();
+  }
 }
 
 export class Writer {
@@ -242,6 +248,12 @@ export class Writer {
         this.pos++;
       }
     }
+  }
+  fieldPathPush(s: string) {
+    this.fieldPath.push(s);
+  }
+  fieldPathPop() {
+    this.fieldPath.pop();
   }
 }
 // Immutable LE<->BE
@@ -729,10 +741,10 @@ export function struct<T>(fields: StructRecord<T>): CoderType<StructInput<T>> {
         throw w.err(`struct: invalid value ${value}`);
       w.path.push(value);
       for (let name in fields) {
-        w.fieldPath.push(name);
+        w.fieldPathPush(name);
         let field = fields[name];
         field.encodeStream(w, (value as T)[name]);
-        w.fieldPath.pop();
+        w.fieldPathPop();
       }
       w.path.pop();
     },
@@ -740,9 +752,9 @@ export function struct<T>(fields: StructRecord<T>): CoderType<StructInput<T>> {
       let res: Partial<T> = {};
       r.path.push(res);
       for (let name in fields) {
-        r.fieldPath.push(name);
+        r.fieldPathPush(name);
         res[name] = fields[name].decodeStream(r);
-        r.fieldPath.pop();
+        r.fieldPathPop();
       }
       r.path.pop();
       return res as T;
@@ -762,9 +774,9 @@ export function tuple<
       if (!Array.isArray(value)) throw w.err(`tuple: invalid value ${value}`);
       w.path.push(value);
       for (let i = 0; i < fields.length; i++) {
-        w.fieldPath.push('' + i);
+        w.fieldPathPush('' + i);
         fields[i].encodeStream(w, value[i]);
-        w.fieldPath.pop();
+        w.fieldPathPop();
       }
       w.path.pop();
     },
@@ -772,9 +784,9 @@ export function tuple<
       let res: any = [];
       r.path.push(res);
       for (let i = 0; i < fields.length; i++) {
-        r.fieldPath.push('' + i);
+        r.fieldPathPush('' + i);
         res.push(fields[i].decodeStream(r));
-        r.fieldPath.pop();
+        r.fieldPathPop();
       }
       r.path.pop();
       return res;
@@ -808,7 +820,10 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
     encodeStream: (w: Writer, value: T[]) => {
       if (!Array.isArray(value)) throw w.err(`array: invalid value ${value}`);
       if (!isBytes(len)) w.length(len, value.length);
-      for (const elm of value) {
+      w.path.push(value);
+      for (let i = 0; i < value.length; i++) {
+        w.fieldPathPush('' + i);
+        const elm = value[i];
         const startPos = w.pos;
         inner.encodeStream(w, elm);
         if (isBytes(len)) {
@@ -820,28 +835,49 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
           if (equalBytes(data.subarray(0, len.length), len))
             throw w.err(`array: inner element encoding same as separator. elm=${elm} data=${data}`);
         }
+        w.fieldPathPop();
       }
+      w.path.pop();
       if (isBytes(len)) w.bytes(len);
     },
     decodeStream: (r: Reader): T[] => {
-      let res = [];
-      if (len === null)
+      let res: T[] = [];
+      if (len === null) {
+        let i = 0;
+        r.path.push(res);
         while (!r.isEnd()) {
+          r.fieldPathPush('' + i++);
           res.push(inner.decodeStream(r));
+          r.fieldPathPop();
           if (inner.size && r.leftBytes < inner.size) break;
         }
-      else if (isBytes(len)) {
+        r.path.pop();
+      } else if (isBytes(len)) {
+        let i = 0;
+        r.path.push(res);
         while (true) {
           if (equalBytes(r.bytes(len.length, true), len)) {
             // Advance cursor position if terminator found
             r.bytes(len.length);
             break;
           }
+          r.fieldPathPush('' + i++);
           res.push(inner.decodeStream(r));
+          r.fieldPathPop();
         }
+        r.path.pop();
       } else {
+        r.fieldPathPush('arrayLen');
         const length = r.length(len);
-        for (let i = 0; i < length; i++) res.push(inner.decodeStream(r));
+        r.fieldPathPop();
+
+        r.path.push(res);
+        for (let i = 0; i < length; i++) {
+          r.fieldPathPush('' + i);
+          res.push(inner.decodeStream(r));
+          r.fieldPathPop();
+        }
+        r.path.pop();
       }
       return res;
     },
