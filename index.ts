@@ -732,9 +732,9 @@ function sizeof(fields: CoderType<any>[]): Option<number> {
   return size;
 }
 
-export function struct<
-  T extends Record<string, any>
->(fields: StructRecord<T>): CoderType<StructInput<T>> {
+export function struct<T extends Record<string, any>>(
+  fields: StructRecord<T>
+): CoderType<StructInput<T>> {
   if (Array.isArray(fields)) throw new Error('Packed.Struct: got array instead of object');
   return wrap({
     size: sizeof(Object.values(fields)),
