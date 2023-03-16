@@ -31,8 +31,8 @@
   "devDependencies": {
     "@types/node": "18.7.16",
     "micro-should": "0.2.0",
-    "prettier": "2.6.2",
-    "typescript": "4.7.3"
+    "prettier": "2.8.4",
+    "typescript": "5.0.2"
   },
   "keywords": [
     "encode",
