@@ -151,7 +151,6 @@ function fmtData(data: P.Bytes, perLine = 8) {
   return res.map((i) => `${bold}${i}${reset}`).join('\n');
 }
 
-
 function fmtValue(value: any) {
   if (P.isBytes(value)) return `b(${green}${base.hex.encode(value)}${reset} len=${value.length})`;
   if (typeof value === 'string') return `s(${green}"${value}"${reset} len=${value.length})`;
@@ -165,7 +164,7 @@ export function decode(
   coder: P.CoderType<any>,
   data: string | P.Bytes,
   forcePrint = false
-): ReturnType<typeof coder['decode']> {
+): ReturnType<(typeof coder)['decode']> {
   data = toBytes(data);
   const r = new DebugReader(data);
   let res, e;
