@@ -80,26 +80,26 @@ export type Writable<T> = T extends {}
       }
   : T;
 
-type Values<T> = T[keyof T];
-type NonUndefinedKey<T, K extends keyof T> = T[K] extends undefined ? never : K;
-type NullableKey<T, K extends keyof T> = T[K] extends NonNullable<T[K]> ? never : K;
+export type Values<T> = T[keyof T];
+export type NonUndefinedKey<T, K extends keyof T> = T[K] extends undefined ? never : K;
+export type NullableKey<T, K extends keyof T> = T[K] extends NonNullable<T[K]> ? never : K;
 // Opt: value !== undefined, but value === T|undefined
-type OptKey<T, K extends keyof T> = NullableKey<T, K> & NonUndefinedKey<T, K>;
-type ReqKey<T, K extends keyof T> = T[K] extends NonNullable<T[K]> ? K : never;
+export type OptKey<T, K extends keyof T> = NullableKey<T, K> & NonUndefinedKey<T, K>;
+export type ReqKey<T, K extends keyof T> = T[K] extends NonNullable<T[K]> ? K : never;
 
-type OptKeys<T> = Pick<T, { [K in keyof T]: OptKey<T, K> }[keyof T]>;
-type ReqKeys<T> = Pick<T, { [K in keyof T]: ReqKey<T, K> }[keyof T]>;
+export type OptKeys<T> = Pick<T, { [K in keyof T]: OptKey<T, K> }[keyof T]>;
+export type ReqKeys<T> = Pick<T, { [K in keyof T]: ReqKey<T, K> }[keyof T]>;
 
-type StructInput<T extends Record<string, any>> = { [P in keyof ReqKeys<T>]: T[P] } & {
+export type StructInput<T extends Record<string, any>> = { [P in keyof ReqKeys<T>]: T[P] } & {
   [P in keyof OptKeys<T>]?: T[P];
 };
 
-type StructRecord<T extends Record<string, any>> = {
+export type StructRecord<T extends Record<string, any>> = {
   [P in keyof T]: CoderType<T[P]>;
 };
 
-type StructOut = Record<string, any>;
-type PadFn = (i: number) => number;
+export type StructOut = Record<string, any>;
+export type PadFn = (i: number) => number;
 
 // Utils
 export class Reader {
