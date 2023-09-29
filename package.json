@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "prettier --check index.ts",
+    "format": "prettier --write index.ts",
     "test": "node test/index.js"
   },
   "author": "Paul Miller (https://paulmillr.com)",

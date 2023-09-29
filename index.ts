@@ -1,4 +1,5 @@
-import * as base from '@scure/base';
+import { base64, bytes as baseBytes, hex as baseHex, str as baseStr, utf8 } from '@scure/base';
+import type { Coder as BaseCoder } from '@scure/base';
 
 /**
  * TODO:
@@ -10,8 +11,8 @@ import * as base from '@scure/base';
  */
 
 // Useful default values
-export const EMPTY = new Uint8Array(); // Empty bytes array
-export const NULL = new Uint8Array([0]); // NULL
+export const EMPTY = /* @__PURE__ */ new Uint8Array(); // Empty bytes array
+export const NULL = /* @__PURE__ */ new Uint8Array([0]); // NULL
 
 export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -179,7 +180,7 @@ export class Reader {
   finish() {
     if (this.isEnd() || this.hasPtr) return;
     throw this.err(
-      `${this.leftBytes} bytes ${this.bitPos} bits left after unpack: ${base.hex.encode(
+      `${this.leftBytes} bytes ${this.bitPos} bits left after unpack: ${baseHex.encode(
         this.data.slice(this.pos)
       )}`
     );
@@ -316,7 +317,7 @@ export function isCoder<T>(elm: any): elm is CoderType<T> {
 // TODO:
 // - move to base? very generic converters, not releated to base and packed
 // - encode/decode -> from/to? coder->convert?
-function dict<T>(): base.Coder<[string, T][], Record<string, T>> {
+function dict<T>(): BaseCoder<[string, T][], Record<string, T>> {
   return {
     encode: (from: [string, T][]): Record<string, T> => {
       const to: Record<string, T> = {};
@@ -333,7 +334,7 @@ function dict<T>(): base.Coder<[string, T][], Record<string, T>> {
 // Safely converts bigint to number
 // Sometimes pointers / tags use u64 or other big numbers which cannot be represented by number,
 // but we still can use them since real value will be smaller than u32
-const number: base.Coder<bigint, number> = {
+const number: BaseCoder<bigint, number> = {
   encode: (from: bigint): number => {
     if (from > BigInt(Number.MAX_SAFE_INTEGER))
       throw new Error(`coders.number: element bigger than MAX_SAFE_INTEGER=${from}`);
@@ -345,7 +346,7 @@ const number: base.Coder<bigint, number> = {
 type Enum = { [k: string]: number | string } & { [k: number]: string };
 // Doesn't return numeric keys, so it's fine
 type EnumKeys<T extends Enum> = keyof T;
-function tsEnum<T extends Enum>(e: T): base.Coder<number, EnumKeys<T>> {
+function tsEnum<T extends Enum>(e: T): BaseCoder<number, EnumKeys<T>> {
   return {
     encode: (from: number): string => e[from],
     decode: (to: string): number => e[to] as number,
@@ -389,8 +390,8 @@ function decimal(precision: number) {
 }
 
 // TODO: export from @scure/base?
-type BaseInput<F> = F extends base.Coder<infer T, any> ? T : never;
-type BaseOutput<F> = F extends base.Coder<any, infer T> ? T : never;
+type BaseInput<F> = F extends BaseCoder<infer T, any> ? T : never;
+type BaseOutput<F> = F extends BaseCoder<any, infer T> ? T : never;
 
 /**
  * Allows to split big conditional coders into a small one; also sort of parser combinator:
@@ -405,10 +406,10 @@ type BaseOutput<F> = F extends base.Coder<any, infer T> ? T : never;
  * @returns
  */
 function match<
-  L extends base.Coder<unknown | undefined, unknown | undefined>[],
+  L extends BaseCoder<unknown | undefined, unknown | undefined>[],
   I = { [K in keyof L]: NonNullable<BaseInput<L[K]>> }[number],
   O = { [K in keyof L]: NonNullable<BaseOutput<L[K]>> }[number]
->(lst: L): base.Coder<I, O> {
+>(lst: L): BaseCoder<I, O> {
   return {
     encode: (from: I): O => {
       for (const c of lst) {
@@ -539,8 +540,8 @@ export const string = (len: Length, le = false): CoderType<string> => {
   const inner = bytes(len, le);
   return wrap({
     size: inner.size,
-    encodeStream: (w: Writer, value: string) => inner.encodeStream(w, base.utf8.decode(value)),
-    decodeStream: (r: Reader): string => base.utf8.encode(inner.decodeStream(r)),
+    encodeStream: (w: Writer, value: string) => inner.encodeStream(w, utf8.decode(value)),
+    decodeStream: (r: Reader): string => utf8.encode(inner.decodeStream(r)),
   });
 };
 
@@ -553,16 +554,16 @@ export const hex = (len: Length, le = false, withZero = false): CoderType<string
     encodeStream: (w: Writer, value: string) => {
       if (withZero && !value.startsWith('0x'))
         throw new Error('hex(withZero=true).encode input should start with 0x');
-      const bytes = base.hex.decode(withZero ? value.slice(2) : value);
+      const bytes = baseHex.decode(withZero ? value.slice(2) : value);
       return inner.encodeStream(w, bytes);
     },
     decodeStream: (r: Reader): string =>
-      (withZero ? '0x' : '') + base.hex.encode(inner.decodeStream(r)),
+      (withZero ? '0x' : '') + baseHex.encode(inner.decodeStream(r)),
   });
 };
 
 // Interoperability with base
-export function apply<T, F>(inner: CoderType<T>, b: base.Coder<T, F>): CoderType<F> {
+export function apply<T, F>(inner: CoderType<T>, b: BaseCoder<T, F>): CoderType<F> {
   if (!isCoder(inner)) throw new Error(`apply: invalid inner value ${inner}`);
   return wrap({
     size: inner.size,
@@ -617,8 +618,8 @@ export const bytesFormatted = (len: Length, fmt: baseFmt, le = false) => {
   const inner = bytes(len, le);
   return wrap({
     size: inner.size,
-    encodeStream: (w: Writer, value: string) => inner.encodeStream(w, base.bytes(fmt, value)),
-    decodeStream: (r: Reader): string => base.str(fmt, inner.decodeStream(r)),
+    encodeStream: (w: Writer, value: string) => inner.encodeStream(w, baseBytes(fmt, value)),
+    decodeStream: (r: Reader): string => baseStr(fmt, inner.decodeStream(r)),
   });
 };
 
@@ -710,7 +711,7 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
 }
 
 export const magicBytes = (constant: Bytes | string): CoderType<undefined> => {
-  const c = typeof constant === 'string' ? base.utf8.decode(constant) : constant;
+  const c = typeof constant === 'string' ? utf8.decode(constant) : constant;
   return magic(bytes(c.length), c);
 };
 
@@ -1062,28 +1063,28 @@ export function base64armor<T>(
   return {
     encode(value: T) {
       const data = inner.encode(value);
-      const encoded = base.base64.encode(data);
+      const encoded = base64.encode(data);
       let lines = [];
       for (let i = 0; i < encoded.length; i += lineLen) {
         const s = encoded.slice(i, i + lineLen);
         if (s.length) lines.push(`${encoded.slice(i, i + lineLen)}\n`);
       }
       let body = lines.join('');
-      if (checksum) body += `=${base.base64.encode(checksum(data))}\n`;
+      if (checksum) body += `=${base64.encode(checksum(data))}\n`;
       return `${markBegin}\n\n${body}${markEnd}\n`;
     },
     decode(s: string): T {
       let lines = s.replace(markBegin, '').replace(markEnd, '').trim().split('\n');
       lines = lines.map((l) => l.replace('\r', '').trim());
       if (checksum && lines[lines.length - 1].startsWith('=')) {
-        const body = base.base64.decode(lines.slice(0, -1).join(''));
+        const body = base64.decode(lines.slice(0, -1).join(''));
         const cs = lines[lines.length - 1].slice(1);
-        const realCS = base.base64.encode(checksum(body));
+        const realCS = base64.encode(checksum(body));
         if (realCS !== cs)
           throw new Error(`Base64Armor: invalid checksum ${cs} instead of ${realCS}`);
         return inner.decode(body);
       }
-      return inner.decode(base.base64.decode(lines.join('')));
+      return inner.decode(base64.decode(lines.join('')));
     },
   };
 }
