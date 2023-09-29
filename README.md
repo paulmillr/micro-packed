@@ -35,6 +35,25 @@ let s = P.struct({
 
 ## Utils
 
+- [Array](#array)
+- [Bytes](#bytes)
+- [String](#string)
+- [Tuple](#tuple)
+- [Map](#map)
+- [Tag](#tag)
+- [Magic](#magic)
+- [Bits](#bits)
+- [Pointer](#pointer)
+- [Padding](#padding)
+- [Flag](#flag)
+- [Flagged](#flagged)
+- [Optional](#optional)
+- [Lazy](#lazy)
+- [Dict](#dict)
+- [Validate](#validate)
+- [Debug](#debug)
+- [Primitive types](#primitive-types)
+
 ### Array
 
 Probably most powerful building block
