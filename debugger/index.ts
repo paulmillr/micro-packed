@@ -98,6 +98,7 @@ function chrWidth(s: string) {
 }
 
 function wrap(s: string, padding: number = 0) {
+  // @ts-ignore
   const limit = process.stdout.columns - 3 - padding;
   if (chrWidth(s) <= limit) return s;
   while (chrWidth(s) > limit) s = s.slice(0, -1);

@@ -199,7 +199,10 @@ export class Writer {
   ptrs: { pos: number; ptr: CoderType<number>; buffer: Bytes }[] = [];
   bitBuf = 0;
   bitPos = 0;
-  constructor(public path: StructOut[] = [], public fieldPath: string[] = []) {}
+  constructor(
+    public path: StructOut[] = [],
+    public fieldPath: string[] = []
+  ) {}
   err(msg: string) {
     return new Error(`Writer(${this.fieldPath.join('/')}): ${msg}`);
   }
@@ -408,7 +411,7 @@ type BaseOutput<F> = F extends BaseCoder<any, infer T> ? T : never;
 function match<
   L extends BaseCoder<unknown | undefined, unknown | undefined>[],
   I = { [K in keyof L]: NonNullable<BaseInput<L[K]>> }[number],
-  O = { [K in keyof L]: NonNullable<BaseOutput<L[K]>> }[number]
+  O = { [K in keyof L]: NonNullable<BaseOutput<L[K]>> }[number],
 >(lst: L): BaseCoder<I, O> {
   return {
     encode: (from: I): O => {
@@ -767,7 +770,7 @@ export function struct<T extends Record<string, any>>(
 
 export function tuple<
   T extends ArrLike<CoderType<any>>,
-  O = Writable<{ [K in keyof T]: UnwrapCoder<T[K]> }>
+  O = Writable<{ [K in keyof T]: UnwrapCoder<T[K]> }>,
 >(fields: T): CoderType<O> {
   if (!Array.isArray(fields))
     throw new Error(`Packed.Tuple: got ${typeof fields} instead of array`);
@@ -913,7 +916,7 @@ export function tag<
     [P in keyof Variants]: { TAG: P; data: UnwrapCoder<Variants[P]> };
   }>,
   TagValue extends string | number,
-  Variants extends Record<TagValue, CoderType<any>>
+  Variants extends Record<TagValue, CoderType<any>>,
 >(tag: CoderType<TagValue>, variants: Variants): CoderType<T> {
   if (!isCoder(tag)) throw new Error(`tag: invalid tag value ${tag}`);
   return wrap({
@@ -939,7 +942,7 @@ export function mappedTag<
     [P in keyof Variants]: { TAG: P; data: UnwrapCoder<Variants[P][1]> };
   }>,
   TagValue extends string | number,
-  Variants extends Record<string, [TagValue, CoderType<any>]>
+  Variants extends Record<string, [TagValue, CoderType<any>]>,
 >(tagCoder: CoderType<TagValue>, variants: Variants): CoderType<T> {
   if (!isCoder(tagCoder)) throw new Error(`mappedTag: invalid tag value ${tag}`);
   const mapValue: Record<string, TagValue> = {};
