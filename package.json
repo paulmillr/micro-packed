@@ -1,6 +1,6 @@
 {
   "name": "micro-packed",
-  "version": "0.4.0-pre",
+  "version": "0.4.0",
   "description": "Less painful binary encoding / decoding",
   "files": [
     "index.js",
