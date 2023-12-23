@@ -1,28 +1,10 @@
 {
+  "extends": "./tsconfig.esm.json",
   "compilerOptions": {
-    "strict": true,
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "outDir": "lib",
     "declaration": true,
-    "declarationMap": true,
-    "target": "es2020",
-    "lib": [
-      "es2020",
-      "dom"
-    ],
-    "module": "node16",
-    "moduleResolution": "node16",
-    "outDir": ".",
-    "noImplicitAny": true,
-    "removeComments": true,
-    "preserveConstEnums": true,
-    "resolveJsonModule": true,
-    "baseUrl": ".",
-  },
-  "include": [
-    "index.ts",
-    "_type_test.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "lib"
-  ]
+    "declarationMap": true
+  }
 }

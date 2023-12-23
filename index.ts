@@ -176,6 +176,7 @@ export class Reader {
       if (leftBytes < needle.length) return;
       if (equalBytes(needle, this.data.subarray(idx, idx + needle.length))) return idx;
     }
+    return;
   }
   finish() {
     if (this.isEnd() || this.hasPtr) return;
@@ -670,6 +671,7 @@ export function flagged<T>(
       // If there is a flag -- decode and return value
       if (hasFlag) return inner.decodeStream(r);
       else if (def) inner.decodeStream(r);
+      return;
     },
   });
 }
@@ -691,6 +693,7 @@ export function optional<T>(
     decodeStream: (r: Reader): Option<T> => {
       if (flag.decodeStream(r)) return inner.decodeStream(r);
       else if (def !== undefined) inner.decodeStream(r);
+      return;
     },
   });
 }
@@ -699,7 +702,7 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
   if (!isCoder(inner)) throw new Error(`flagged: invalid inner value ${inner}`);
   return wrap({
     size: inner.size,
-    encodeStream: (w: Writer, value: undefined) => inner.encodeStream(w, constant),
+    encodeStream: (w: Writer, _: undefined) => inner.encodeStream(w, constant),
     decodeStream: (r: Reader): undefined => {
       const value = inner.decodeStream(r);
       if (
@@ -720,10 +723,10 @@ export const magicBytes = (constant: Bytes | string): CoderType<undefined> => {
 
 export function constant<T>(c: T): CoderType<T> {
   return wrap({
-    encodeStream: (w: Writer, value: T) => {
+    encodeStream: (_: Writer, value: T) => {
       if (value !== c) throw new Error(`constant: invalid value ${value} (exp: ${c})`);
     },
-    decodeStream: (r: Reader): T => c,
+    decodeStream: (_: Reader): T => c,
   });
 }
 
@@ -1098,6 +1101,7 @@ export const nothing = magic(bytes(0), EMPTY);
 export function debug<T>(inner: CoderType<T>): CoderType<T> {
   if (!isCoder(inner)) throw new Error(`debug: invalid inner value ${inner}`);
   const log = (name: string, rw: Reader | Writer, value: any) => {
+    // @ts-ignore
     console.log(`DEBUG/${name}(${rw.fieldPath.join('/')}):`, { type: typeof value, value });
     return value;
   };

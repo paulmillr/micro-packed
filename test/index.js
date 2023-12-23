@@ -1,8 +1,7 @@
-import { deepStrictEqual, throws } from 'assert';
+import { deepStrictEqual, throws } from 'node:assert';
 import { should } from 'micro-should';
 import { hex } from '@scure/base';
-import * as base from '@scure/base';
-import * as P from '../index.js';
+import * as P from '../lib/esm/index.js';
 
 should('Packed U32BE', () => {
   const be32 = [
@@ -553,7 +552,7 @@ should('cstring', () => {
 });
 
 should('hex', () => {
-  const h = P.apply(P.bytes(P.U16BE), base.hex);
+  const h = P.apply(P.bytes(P.U16BE), hex);
   const data = '01020304';
   deepStrictEqual(h.decode(h.encode(data)), data);
 });
