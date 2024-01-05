@@ -4,14 +4,14 @@
   "description": "Less painful binary encoding / decoding",
   "files": [
     "lib/index.js",
-    "lib/esm/index.js",
-    "lib/index.d.ts",
-    "lib/index.d.ts.map",
-    "index.ts",
     "lib/debugger.js",
+    "lib/esm/index.js",
     "lib/esm/debugger.js",
+    "lib/index.d.ts",
     "lib/debugger.d.ts",
+    "lib/index.d.ts.map",
     "lib/debugger.d.ts.map",
+    "index.ts",
     "debugger.ts",
     "lib/esm/package.json"
   ],
