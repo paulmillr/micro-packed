@@ -733,7 +733,8 @@ export function constant<T>(c: T): CoderType<T> {
 function sizeof(fields: CoderType<any>[]): Option<number> {
   let size: Option<number> = 0;
   for (let f of fields) {
-    if (!f.size) return;
+    if (f.size === undefined) return;
+    if (!Number.isSafeInteger(f.size)) throw new Error(`sizeof: wrong element size=${size}`);
     size += f.size;
   }
   return size;

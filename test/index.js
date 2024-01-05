@@ -738,4 +738,24 @@ should('coders/match', () => {
   throws(() => m.decode(4));
 });
 
+should('sizeof', () => {
+  const s0 = P.array(0, P.U32LE);
+  const s1 = P.array(1, P.U8);
+  const s4 = P.U32LE;
+  deepStrictEqual(s0.size, 0);
+  deepStrictEqual(s1.size, 1);
+  deepStrictEqual(s4.size, 4);
+  deepStrictEqual(P.tuple([s0]).size, 0);
+  deepStrictEqual(P.tuple([s1]).size, 1);
+  deepStrictEqual(P.tuple([s1, s0, s1, s0, s1]).size, 3);
+  deepStrictEqual(P.array(3, s1).size, 3);
+  deepStrictEqual(P.array(3, s4).size, 12);
+  // Size of dynamic arrays is undefined
+  deepStrictEqual(P.array(null, s4).size, undefined);
+  deepStrictEqual(P.array(P.U8, s4).size, undefined);
+  deepStrictEqual(P.struct({ f1: s0 }).size, 0);
+  deepStrictEqual(P.struct({ f1: s1 }).size, 1);
+  deepStrictEqual(P.struct({ f1: s1, f2: s0, f3: s1, f4: s0, f5: s1 }).size, 3);
+});
+
 should.run();
