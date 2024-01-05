@@ -2,7 +2,7 @@
 
 > Less painful binary encoding / decoding
 
-Declarative definition of complex binary structures using composable primitives.
+Define complex binary structures using composable primitives.
 
 Comes with a friendly debugger.
 
