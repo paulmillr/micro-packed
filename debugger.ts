@@ -1,5 +1,5 @@
 import * as base from '@scure/base';
-import * as P from 'micro-packed';
+import * as P from './index.js';
 
 const UNKNOWN = '(???)';
 const bold = '\x1b[1m';
@@ -131,7 +131,7 @@ export function table(data: any[]) {
     const row = columns.map((i) => str(elm[i]).split('\n'));
     let message = [...Array(Math.max(...row.map((i) => i.length))).keys()]
       .map((line) => row.map((c, i) => pad(str(c[line]), widths[columns[i]])))
-      .map((line, i) => wrap(` ${line.join(padding)} `, 1))
+      .map((line, _) => wrap(` ${line.join(padding)} `, 1))
       .join('\n');
     res.push(message);
   }
@@ -141,6 +141,7 @@ export function table(data: any[]) {
       .join(`─${i === res.length - 1 ? '┴' : '┼'}─`);
     res[i] += wrap(`\n${reset}${gray}─${border}─${reset}`);
   }
+  // @ts-ignore
   console.log(res.join('\n'));
 }
 
@@ -177,6 +178,7 @@ export function decode(
   }
   r.finishDebug();
   if (e || forcePrint) {
+    // @ts-ignore
     console.log('==== DECODED BEFORE ERROR ====');
     table(
       mapData(r.debugLst, data).map((elm) => ({
@@ -186,6 +188,7 @@ export function decode(
         Value: fmtValue(elm.value),
       }))
     );
+    // @ts-ignore
     console.log('==== /DECODED BEFORE ERROR ====');
   }
   if (e) throw e;
@@ -240,6 +243,7 @@ export function diff(
   expected: string | P.Bytes,
   skipSame = true
 ) {
+  // @ts-ignore
   console.log('==== DIFF ====');
   const [_actual, _expected] = [actual, expected].map((i) => getMap(coder, i)) as [
     DebugData[],
@@ -261,5 +265,6 @@ export function diff(
     });
   }
   table(data);
+  // @ts-ignore
   console.log('==== /DIFF ====');
 }

@@ -1,7 +1,7 @@
 import * as P from './index.js';
 import * as base from '@scure/base';
 // Should not be included in npm package. For typescript testing only
-const assertType = <T>(value: T) => {};
+const assertType = <T>(_value: T) => {};
 
 // Writable
 const wt1 = [1] as const;

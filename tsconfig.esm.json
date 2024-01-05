@@ -18,6 +18,6 @@
     "outDir": "lib/esm",
     "moduleResolution": "bundler"
   },
-  "include": ["index.ts"],
+  "include": ["index.ts", "debugger.ts", "_type_test.ts"],
   "exclude": ["node_modules", "lib"]
 }

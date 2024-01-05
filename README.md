@@ -5,7 +5,7 @@
 Allows declarative definition for complex structures (like in C/Rust) via composable primitives,
 which enables encoding these structures into bytes and parsing back.
 
-Comes with an separate [debugger package](./debugger/).
+Comes with a friendly debugger.
 
 ## Usage
 
@@ -32,6 +32,26 @@ let s = P.struct({
   field8: P.array(null, P.U64BE),
 })
 ```
+
+## Debugger
+
+```ts
+import * as PD from 'micro-packed/debugger';
+
+PD.decode(<coder>, data);
+```
+
+![Decode](./test/screens/decode.png)
+
+### Diff
+
+```ts
+import * as PD from 'micro-packed/debugger';
+
+PD.diff(<coder>, actual, expected);
+```
+
+![Diff](./test/screens/diff.png)
 
 ## Utils
 
