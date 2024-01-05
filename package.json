@@ -35,8 +35,8 @@
   },
   "scripts": {
     "build": "tsc && tsc -p tsconfig.esm.json",
-    "lint": "prettier --check index.ts",
-    "format": "prettier --write index.ts",
+    "lint": "prettier --check index.ts debugger.ts",
+    "format": "prettier --write index.ts debugger.ts",
     "test": "node test/index.js && node test/debugger.test.js"
   },
   "author": "Paul Miller (https://paulmillr.com)",

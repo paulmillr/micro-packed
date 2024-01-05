@@ -247,7 +247,7 @@ export function diff(
   console.log('==== DIFF ====');
   const [_actual, _expected] = [actual, expected].map((i) => getMap(coder, i)) as [
     DebugData[],
-    DebugData[]
+    DebugData[],
   ];
   const len = Math.max(_actual.length, _expected.length);
   const data = [];
