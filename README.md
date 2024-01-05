@@ -2,8 +2,7 @@
 
 > Less painful binary encoding / decoding
 
-Allows declarative definition for complex structures (like in C/Rust) via composable primitives,
-which enables encoding these structures into bytes and parsing back.
+Declarative definition of complex binary structures using composable primitives.
 
 Comes with a friendly debugger.
 
