@@ -29,7 +29,7 @@ let s = P.struct({
   field7: P.string(null),
   // - null -- read until buffer exhausted
   field8: P.array(null, P.U64BE),
-})
+});
 ```
 
 ## Debugger
@@ -38,17 +38,10 @@ let s = P.struct({
 import * as PD from 'micro-packed/debugger';
 
 PD.decode(<coder>, data);
+PD.diff(<coder>, actual, expected);
 ```
 
 ![Decode](./test/screens/decode.png)
-
-### Diff
-
-```ts
-import * as PD from 'micro-packed/debugger';
-
-PD.diff(<coder>, actual, expected);
-```
 
 ![Diff](./test/screens/diff.png)
 
