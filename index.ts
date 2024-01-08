@@ -102,16 +102,147 @@ export type StructOut = Record<string, any>;
 export type PadFn = (i: number) => number;
 
 // Utils
+// Small bitset structure to store position of ranges that have been read.
+// Possible can be even more efficient by using some interval trees, but would be more complex
+// Needs O(N/8) memory for parsing.
+// Purpose: if there are pointers in parsed structure,
+// they can cause read of two distinct ranges:
+// [0-32, 64-128], which means 'pos' is not enough to handle them
+const _bitset = /* @__PURE__ */ {
+  BITS: 32,
+  FULL_MASK: -1 >>> 0, // 1<<32 will overflow
+  len: (len: number) => Math.ceil(len / 32),
+  create: (len: number) => new Uint32Array(_bitset.len(len)),
+  clean: (bs: Uint32Array) => bs.fill(0),
+  debug: (bs: Uint32Array) => Array.from(bs).map((i) => (i >>> 0).toString(2).padStart(32, '0')),
+  checkLen: (bs: Uint32Array, len: number) => {
+    if (_bitset.len(len) === bs.length) return;
+    throw new Error(`bitSet: wrong length=${bs.length}. Expected: ${_bitset.len(len)}`);
+  },
+  chunkLen: (bsLen: number, pos: number, len: number) => {
+    if (pos < 0) throw new Error(`bitset: wrong pos=${pos}`);
+    if (pos + len > bsLen) throw new Error(`bitSet: wrong range=${pos}/${len} of ${bsLen}`);
+  },
+  set: (bs: Uint32Array, chunk: number, value: number, allowRewrite = true) => {
+    if (!allowRewrite && (bs[chunk] & value) !== 0) return false;
+    bs[chunk] |= value;
+    return true;
+  },
+  pos: (pos: number, i: number) => ({
+    chunk: Math.floor((pos + i) / 32),
+    mask: 1 << (32 - ((pos + i) % 32) - 1),
+  }),
+  indices: (bs: Uint32Array, len: number, invert = false) => {
+    _bitset.checkLen(bs, len);
+    const { FULL_MASK, BITS } = _bitset;
+    const left = BITS - (len % BITS);
+    const lastMask = left ? (FULL_MASK >>> left) << left : FULL_MASK;
+    const res = [];
+    for (let i = 0; i < bs.length; i++) {
+      let c = bs[i];
+      if (invert) c = ~c; // allows to gen unset elements
+      // apply mask to last element, so we won't iterate non-existent items
+      if (i === bs.length - 1) c &= lastMask;
+      if (c === 0) continue; // fast-path
+      for (let j = 0; j < BITS; j++) {
+        const m = 1 << (BITS - j - 1);
+        if (c & m) res.push(i * BITS + j);
+      }
+    }
+    return res;
+  },
+  range: (arr: number[]) => {
+    const res = [];
+    let cur;
+    for (const i of arr) {
+      if (cur === undefined || i !== cur.pos + cur.length) res.push((cur = { pos: i, length: 1 }));
+      else cur.length += 1;
+    }
+    return res;
+  },
+  rangeDebug: (bs: Uint32Array, len: number, invert = false) =>
+    `[${_bitset
+      .range(_bitset.indices(bs, len, invert))
+      .map((i) => `(${i.pos}/${i.length})`)
+      .join(', ')}]`,
+  setRange: (bs: Uint32Array, bsLen: number, pos: number, len: number, allowRewrite = true) => {
+    _bitset.chunkLen(bsLen, pos, len);
+    const { FULL_MASK, BITS } = _bitset;
+    // Try to set range with maximum efficiency:
+    // - first chunk is always    '0000[1111]' (only right ones)
+    // - middle chunks are set to '[1111 1111]' (all ones)
+    // - last chunk is always     '[1111]0000' (only left ones)
+    // - max operations:          (N/32) + 2 (first and last)
+    const first = pos % BITS ? Math.floor(pos / BITS) : undefined;
+    const lastPos = pos + len;
+    const last = lastPos % BITS ? Math.floor(lastPos / BITS) : undefined;
+    // special case, whole range inside single chunk
+    if (first !== undefined && first === last)
+      return _bitset.set(
+        bs,
+        first,
+        (FULL_MASK >>> (BITS - len)) << (BITS - len - pos),
+        allowRewrite
+      );
+    if (first !== undefined) {
+      if (!_bitset.set(bs, first, FULL_MASK >>> pos % BITS, allowRewrite)) return false; // first chunk
+    }
+    // middle chunks
+    const start = first !== undefined ? first + 1 : pos / BITS;
+    const end = last !== undefined ? last : lastPos / BITS;
+    for (let i = start; i < end; i++)
+      if (!_bitset.set(bs, i, FULL_MASK, allowRewrite)) return false;
+    if (last !== undefined && first !== last)
+      if (!_bitset.set(bs, last, FULL_MASK << (BITS - (lastPos % BITS)), allowRewrite))
+        return false; // last chunk
+    return true;
+  },
+};
+
+export type ReaderOpts = {
+  // If there are remaining unparsed bytes, the decoding is probably wrong.
+  // Or, unnecessary information was added. Perhaps, to fingerprint something.
+  allowUnreadBytes?: boolean;
+  // The check enforces parser termination.
+  // If pointers can read same region of memory multiple times,
+  // you can cause combinatorial explosion by creating
+  // array of pointers to same address and cause DoS.
+  allowMultipleReads?: boolean;
+};
+
 export class Reader {
   pos = 0;
-  hasPtr: boolean = false;
   bitBuf = 0;
   bitPos = 0;
+  private bs: Uint32Array | undefined;
   constructor(
     readonly data: Bytes,
+    readonly opts: ReaderOpts = {},
     public path: StructOut[] = [],
-    public fieldPath: string[] = []
+    public fieldPath: string[] = [],
+    private parent: Reader | undefined = undefined,
+    public parentOffset: number = 0
   ) {}
+  enablePtr(): void {
+    if (this.parent) return this.parent.enablePtr();
+    if (this.bs) return;
+    this.bs = _bitset.create(this.data.length);
+    _bitset.setRange(this.bs, this.data.length, 0, this.pos, this.opts.allowMultipleReads);
+  }
+  private markBytesBS(pos: number, len: number): boolean {
+    if (this.parent) return this.parent.markBytesBS(this.parentOffset + pos, len);
+    if (!len) return true;
+    if (!this.bs) return true;
+    return _bitset.setRange(this.bs, this.data.length, pos, len, false);
+  }
+  private markBytes(len: number): boolean {
+    const pos = this.pos;
+    this.pos += len;
+    const res = this.markBytesBS(pos, len);
+    if (!this.opts.allowMultipleReads && !res)
+      throw this.err(`multiple read pos=${this.pos} len=${len}`);
+    return res;
+  }
   err(msg: string) {
     return new Error(`Reader(${this.fieldPath.join('/')}): ${msg}`);
   }
@@ -120,17 +251,23 @@ export class Reader {
     if (n > this.data.length) throw new Error('absBytes: Unexpected end of buffer');
     return this.data.subarray(n);
   }
+  // return reader using offset
+  offsetReader(n: number) {
+    return new Reader(this.absBytes(n), this.opts, this.path, this.fieldPath, this, n);
+  }
   bytes(n: number, peek = false) {
     if (this.bitPos) throw this.err('readBytes: bitPos not empty');
     if (!Number.isFinite(n)) throw this.err(`readBytes: wrong length=${n}`);
     if (this.pos + n > this.data.length) throw this.err('readBytes: Unexpected end of buffer');
     const slice = this.data.subarray(this.pos, this.pos + n);
-    if (!peek) this.pos += n;
+    if (!peek) this.markBytes(n);
     return slice;
   }
   byte(peek = false): number {
     if (this.bitPos) throw this.err('readByte: bitPos not empty');
-    return this.data[peek ? this.pos : this.pos++];
+    const data = this.data[this.pos];
+    if (!peek) this.markBytes(1);
+    return data;
   }
   get leftBytes(): number {
     return this.data.length - this.pos;
@@ -147,13 +284,13 @@ export class Reader {
     if (typeof byteLen !== 'number') throw this.err(`Wrong length: ${byteLen}`);
     return byteLen;
   }
-  // Note: bits reads in BE (left to right) mode: (0b1000_0000).readBits(1) == 1
+  // bits are read in BE mode (left to right): (0b1000_0000).readBits(1) == 1
   bits(bits: number) {
     if (bits > 32) throw this.err('BitReader: cannot read more than 32 bits in single call');
     let out = 0;
     while (bits) {
       if (!this.bitPos) {
-        this.bitBuf = this.data[this.pos++];
+        this.bitBuf = this.byte();
         this.bitPos = 8;
       }
       const take = Math.min(bits, this.bitPos);
@@ -179,12 +316,33 @@ export class Reader {
     return;
   }
   finish() {
-    if (this.isEnd() || this.hasPtr) return;
-    throw this.err(
-      `${this.leftBytes} bytes ${this.bitPos} bits left after unpack: ${baseHex.encode(
-        this.data.slice(this.pos)
-      )}`
-    );
+    if (this.opts.allowUnreadBytes) return;
+    if (this.bitPos) {
+      throw this.err(
+        `${this.bitPos} bits left after unpack: ${baseHex.encode(this.data.slice(this.pos))}`
+      );
+    }
+    if (this.bs && !this.parent) {
+      const notRead = _bitset.indices(this.bs, this.data.length, true);
+      if (notRead.length) {
+        const formatted = _bitset
+          .range(notRead)
+          .map(
+            ({ pos, length }) =>
+              `(${pos}/${length})[${baseHex.encode(this.data.subarray(pos, pos + length))}]`
+          )
+          .join(', ');
+        throw this.err(`unread byte ranges: ${formatted} (total=${this.data.length})`);
+      } else return; // all bytes read, everything is ok
+    }
+    // Default: no pointers enabled
+    if (!this.isEnd()) {
+      throw this.err(
+        `${this.leftBytes} bytes ${this.bitPos} bits left after unpack: ${baseHex.encode(
+          this.data.slice(this.pos)
+        )}`
+      );
+    }
   }
   fieldPathPush(s: string) {
     this.fieldPath.push(s);
@@ -284,8 +442,8 @@ export function wrap<T>(inner: BytesCoderStream<T>): BytesCoderStream<T> & Bytes
       inner.encodeStream(w, value);
       return w.buffer;
     },
-    decode: (data: Bytes): T => {
-      const r = new Reader(data);
+    decode: (data: Bytes, opts: ReaderOpts = {}): T => {
+      const r = new Reader(data, opts);
       const res = inner.decodeStream(r);
       r.finish();
       return res;
@@ -702,7 +860,7 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
   if (!isCoder(inner)) throw new Error(`flagged: invalid inner value ${inner}`);
   return wrap({
     size: inner.size,
-    encodeStream: (w: Writer, _: undefined) => inner.encodeStream(w, constant),
+    encodeStream: (w: Writer, _value: undefined) => inner.encodeStream(w, constant),
     decodeStream: (r: Reader): undefined => {
       const value = inner.decodeStream(r);
       if (
@@ -723,10 +881,10 @@ export const magicBytes = (constant: Bytes | string): CoderType<undefined> => {
 
 export function constant<T>(c: T): CoderType<T> {
   return wrap({
-    encodeStream: (_: Writer, value: T) => {
+    encodeStream: (_w: Writer, value: T) => {
       if (value !== c) throw new Error(`constant: invalid value ${value} (exp: ${c})`);
     },
-    decodeStream: (_: Reader): T => c,
+    decodeStream: (_r: Reader): T => c,
   });
 }
 
@@ -818,7 +976,10 @@ export function prefix<T>(len: PrefixLength, inner: CoderType<T>): CoderType<T> 
     },
     decodeStream: (r: Reader): T => {
       const data = b.decodeStream(r);
-      return inner.decodeStream(new Reader(data, r.path, r.fieldPath));
+      const ir = new Reader(data, r.opts, r.path, r.fieldPath);
+      const res = inner.decodeStream(ir);
+      ir.finish();
+      return res;
     },
   });
 }
@@ -1031,6 +1192,8 @@ export function padRight<T>(
   });
 }
 
+// Pointers are scoped, next pointer in dereference chain is offseted by previous one.
+// Not too generic, but, works fine for now.
 export function pointer<T>(
   ptr: CoderType<number>,
   inner: CoderType<T>,
@@ -1042,18 +1205,16 @@ export function pointer<T>(
   return wrap({
     size: sized ? ptr.size : undefined,
     encodeStream: (w: Writer, value: T) => {
+      // TODO: by some reason it encodes array of pointers as [(ptr,val), (ptr, val)]
+      // instead of [ptr, ptr][val, val]
       const start = w.pos;
       ptr.encodeStream(w, 0);
       w.ptrs.push({ pos: start, ptr, buffer: inner.encode(value) });
     },
     decodeStream: (r: Reader): T => {
       const ptrVal = ptr.decodeStream(r);
-      // This check enforces termination of parser, if there is backwards pointers,
-      // then it is possible to create loop and cause DoS.
-      if (ptrVal < r.pos) throw new Error('pointer.decodeStream pointer less than position');
-      r.hasPtr = true;
-      const rChild = new Reader(r.absBytes(ptrVal), r.path, r.fieldPath);
-      return inner.decodeStream(rChild);
+      r.enablePtr();
+      return inner.decodeStream(r.offsetReader(ptrVal));
     },
   });
 }
@@ -1112,3 +1273,6 @@ export function debug<T>(inner: CoderType<T>): CoderType<T> {
     decodeStream: (r: Reader): T => log('decode', r, inner.decodeStream(r)),
   });
 }
+
+// Internal methods for test purposes only
+export const _TEST = /* @__PURE__ */ { _bitset };
