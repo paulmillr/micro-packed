@@ -1,7 +1,7 @@
 {
   "name": "micro-packed",
-  "version": "0.5.0",
-  "description": "Define complex binary structures using composable primitives.",
+  "version": "0.5.1",
+  "description": "Define complex binary structures using composable primitives",
   "files": [
     "lib/index.js",
     "lib/debugger.js",
