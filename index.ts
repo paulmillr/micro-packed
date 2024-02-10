@@ -265,6 +265,7 @@ export class Reader {
   }
   byte(peek = false): number {
     if (this.bitPos) throw this.err('readByte: bitPos not empty');
+    if (this.pos + 1 > this.data.length) throw this.err('readBytes: Unexpected end of buffer');
     const data = this.data[this.pos];
     if (!peek) this.markBytes(1);
     return data;
@@ -502,7 +503,10 @@ const number: BaseCoder<bigint, number> = {
       throw new Error(`coders.number: element bigger than MAX_SAFE_INTEGER=${from}`);
     return Number(from);
   },
-  decode: (to: number): bigint => BigInt(to),
+  decode: (to: number): bigint => {
+    if (!Number.isSafeInteger(to)) throw new Error('coders.number: element is not safe integer');
+    return BigInt(to);
+  },
 };
 // TODO: replace map with this?
 type Enum = { [k: string]: number | string } & { [k: number]: string };
@@ -589,8 +593,13 @@ function match<
     },
   };
 }
+// Reverse direction of coder
+const reverse = <F, T>(coder: Coder<F, T>): Coder<T, F> => ({
+  encode: coder.decode,
+  decode: coder.encode,
+});
 
-export const coders = { dict, number, tsEnum, decimal, match };
+export const coders = { dict, number, tsEnum, decimal, match, reverse };
 
 // PackedCoders
 export const bits = (len: number): CoderType<number> =>
@@ -599,12 +608,15 @@ export const bits = (len: number): CoderType<number> =>
     decodeStream: (r: Reader): number => r.bits(len),
   });
 
-export const bigint = (size: number, le = false, signed = false): CoderType<bigint> =>
+// unsized bigint should be wrapped in container (bytes/etc)
+// 0n = new Uint8Array([])
+// 1n = new Uint8Array([1n])
+// Please open issue, if you need different behavior for zero.
+export const bigint = (size: number, le = false, signed = false, sized = true): CoderType<bigint> =>
   wrap({
-    size,
-    encodeStream: (w: Writer, value: bigint | number) => {
-      if (typeof value !== 'number' && typeof value !== 'bigint')
-        throw w.err(`bigint: invalid value: ${value}`);
+    size: sized ? size : undefined,
+    encodeStream: (w: Writer, value: bigint) => {
+      if (typeof value !== 'bigint') throw w.err(`bigint: invalid value: ${value}`);
       let _value = BigInt(value);
       const bLen = BigInt(size);
       checkBounds(w, _value, 8n * bLen, !!signed);
@@ -616,13 +628,18 @@ export const bigint = (size: number, le = false, signed = false): CoderType<bigi
         _value >>= 8n;
       }
       let res = new Uint8Array(b).reverse();
+      if (!sized) {
+        let pos = 0;
+        for (pos = 0; pos < res.length; pos++) if (res[pos] !== 0) break;
+        res = res.subarray(pos); // remove leading zeros
+      }
       w.bytes(le ? res.reverse() : res);
     },
     decodeStream: (r: Reader): bigint => {
       const bLen = BigInt(size);
-      let value = r.bytes(size);
-      if (le) value = swap(value);
-      const b = swap(value);
+      // TODO: for le we can read until first zero?
+      const value = r.bytes(sized ? size : Math.min(size, r.leftBytes));
+      const b = le ? value : swap(value);
       const signBit = 2n ** (8n * bLen - 1n);
       let res = 0n;
       for (let i = 0; i < b.length; i++) res |= BigInt(b[i]) << (8n * BigInt(i));
@@ -647,9 +664,11 @@ export const U64BE = bigint(8, false);
 export const I64LE = bigint(8, true, true);
 export const I64BE = bigint(8, false, true);
 
-export const int = (size: number, le = false, signed = false): CoderType<number> => {
+// TODO: we can speed-up if integers are used. Unclear if it's worth to increase code size.
+// Also, numbers can't use >= 32 bits.
+export const int = (size: number, le = false, signed = false, sized = true): CoderType<number> => {
   if (size > 6) throw new Error('int supports size up to 6 bytes (48 bits), for other use bigint');
-  return apply(bigint(size, le, signed), coders.number);
+  return apply(bigint(size, le, signed, sized), coders.number);
 };
 
 export const U32LE = int(4, true);

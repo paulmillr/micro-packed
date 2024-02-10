@@ -87,6 +87,76 @@ describe('primitives', () => {
     ],
     errValues: [-2147483649, 2147483648],
   });
+  test('U64BE', {
+    p: P.U64BE,
+    correct: [
+      [0n, '0000000000000000'],
+      [123n, '000000000000007b'],
+      [12312n, '0000000000003018'],
+      [1231231n, '000000000012c97f'],
+      [123123123n, '000000000756b5b3'],
+      [4294967295n, '00000000ffffffff'],
+      [2n ** 64n - 1n, 'ffffffffffffffff'],
+    ],
+    errValues: [-1n, 2n ** 64n],
+  });
+  test('U64LE', {
+    p: P.U64LE,
+    correct: [
+      [0n, '0000000000000000'],
+      [123n, '7b00000000000000'],
+      [12312n, '1830000000000000'],
+      [1231231n, '7fc9120000000000'],
+      [123123123n, 'b3b5560700000000'],
+      [4294967295n, 'ffffffff00000000'],
+      [2n ** 64n - 1n, 'ffffffffffffffff'],
+    ],
+    errValues: [-1n, 2n ** 64n],
+  });
+
+  should('bigint size', () => {
+    // 32 bit -> 4 bytes
+    throws(() => P.U32BE.decode(new Uint8Array(3)));
+    P.U32BE.decode(new Uint8Array(4));
+    throws(() => P.U32BE.decode(new Uint8Array(5)));
+    // 64 bit -> 8 bytes
+    throws(() => P.U64BE.decode(new Uint8Array(7)));
+    P.U64BE.decode(new Uint8Array(8));
+    throws(() => P.U64BE.decode(new Uint8Array(9)));
+
+    const VarU64 = P.bigint(8, false, false, false);
+    VarU64.decode(new Uint8Array(7));
+    VarU64.decode(new Uint8Array(8));
+    throws(() => VarU64.decode(new Uint8Array(9))); // left more than needed
+    // encode
+    deepStrictEqual(VarU64.encode(0n), new Uint8Array([]));
+    deepStrictEqual(VarU64.encode(10n), new Uint8Array([10]));
+    deepStrictEqual(VarU64.encode(300n), new Uint8Array([1, 44]));
+    deepStrictEqual(
+      VarU64.encode(2n ** 64n - 1n),
+      new Uint8Array([255, 255, 255, 255, 255, 255, 255, 255])
+    );
+    throws(() => VarU64.encode(2n ** 64n));
+    // decode
+    deepStrictEqual(VarU64.decode(VarU64.encode(10n)), 10n);
+    deepStrictEqual(VarU64.decode(VarU64.encode(300n)), 300n);
+    deepStrictEqual(VarU64.decode(VarU64.encode(2n ** 64n - 1n)), 2n ** 64n - 1n);
+  });
+  should('number typecheck', () => {
+    throws(() => P.U64BE.encode(1.01));
+    throws(() => P.U64BE.encode(1));
+    throws(() => P.U64BE.encode(true));
+    throws(() => P.U64BE.encode(NaN));
+    throws(() => P.U64BE.encode(null));
+    P.U64BE.encode(1n);
+    throws(() => P.U32BE.encode(1.01));
+    throws(() => P.U32BE.encode(true));
+    throws(() => P.U32BE.encode(NaN));
+    throws(() => P.U32BE.encode(null));
+    P.U32BE.encode(1);
+    throws(() => P.U32BE.encode(1n));
+  });
+
   describe('bits', () => {
     test('basic', {
       p: P.struct({ f: P.bits(5), f1: P.bits(1), f2: P.bits(1), f3: P.bits(1) }),
@@ -680,52 +750,63 @@ describe('utils', () => {
     deepStrictEqual(P.struct({ f1: s1, f2: s0, f3: s1, f4: s0, f5: s1 }).size, 3);
   });
   describe('Reader', () => {
-    should('bits: basic', () => {
-      const u = new P.Reader(new Uint8Array([152, 0]));
-      deepStrictEqual([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 0, 6, 0]);
-      deepStrictEqual(u.byte(), 0);
-      deepStrictEqual(u.isEnd(), true);
-    });
+    describe('bits', () => {
+      should('basic', () => {
+        const u = new P.Reader(new Uint8Array([152, 0]));
+        deepStrictEqual([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 0, 6, 0]);
+        deepStrictEqual(u.byte(), 0);
+        deepStrictEqual(u.isEnd(), true);
+      });
 
-    should('bits: u32', () => {
-      deepStrictEqual(new P.Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff])).bits(32), 2 ** 32 - 1);
-    });
+      should('u32', () => {
+        deepStrictEqual(
+          new P.Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff])).bits(32),
+          2 ** 32 - 1
+        );
+      });
 
-    should('bits: full mask', () => {
-      const u = new P.Reader(new Uint8Array([0xff]));
-      deepStrictEqual([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 1, 15, 3]);
-      deepStrictEqual(u.isEnd(), true);
-    });
+      should('full mask', () => {
+        const u = new P.Reader(new Uint8Array([0xff]));
+        deepStrictEqual([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 1, 15, 3]);
+        deepStrictEqual(u.isEnd(), true);
+      });
 
-    should('bits: u32 mask', () => {
-      const u = new P.Reader(new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010, 0]));
-      for (let i = 0; i < 32; i++) deepStrictEqual(u.bits(1), +!(i & 1));
-      deepStrictEqual(u.byte(), 0);
-      deepStrictEqual(u.isEnd(), true);
-    });
+      should('u32 mask', () => {
+        const u = new P.Reader(new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010, 0]));
+        for (let i = 0; i < 32; i++) deepStrictEqual(u.bits(1), +!(i & 1));
+        deepStrictEqual(u.byte(), 0);
+        deepStrictEqual(u.isEnd(), true);
+      });
 
-    should('bits: throw on non-full (1 byte)', () => {
-      const r = new P.Reader(new Uint8Array([0xff, 0]));
-      r.bits(7);
-      throws(() => r.byte());
-      throws(() => r.bytes(1));
-      throws(() => r.bytes(1, true));
-      throws(() => r.byte(true));
-      r.bits(1);
-      deepStrictEqual(r.byte(), 0);
-      deepStrictEqual(r.isEnd(), true);
-    });
+      should('throw on non-full (1 byte)', () => {
+        const r = new P.Reader(new Uint8Array([0xff, 0]));
+        r.bits(7);
+        throws(() => r.byte());
+        throws(() => r.bytes(1));
+        throws(() => r.bytes(1, true));
+        throws(() => r.byte(true));
+        r.bits(1);
+        deepStrictEqual(r.byte(), 0);
+        deepStrictEqual(r.isEnd(), true);
+      });
 
-    should('bits: throw on non-full (4 byte)', () => {
-      const r = new P.Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0]));
-      r.bits(31);
-      throws(() => r.byte());
-      throws(() => r.bytes(1));
-      throws(() => r.bytes(1, true));
-      throws(() => r.byte(true));
-      r.bits(1);
-      deepStrictEqual(r.byte(), 0);
-      deepStrictEqual(r.isEnd(), true);
+      should('throw on non-full (4 byte)', () => {
+        const r = new P.Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0]));
+        r.bits(31);
+        throws(() => r.byte());
+        throws(() => r.bytes(1));
+        throws(() => r.bytes(1, true));
+        throws(() => r.byte(true));
+        r.bits(1);
+        deepStrictEqual(r.byte(), 0);
+        deepStrictEqual(r.isEnd(), true);
+      });
+
+      should('empty array', () => {
+        throws(() => new P.Reader(new Uint8Array([])).bits(1), '1');
+        throws(() => new P.Reader(new Uint8Array([])).bits(8), '8');
+        throws(() => new P.Reader(new Uint8Array([])).bits(32), '32');
+      });
     });
 
     should('find', () => {
