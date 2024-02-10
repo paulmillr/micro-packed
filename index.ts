@@ -40,10 +40,12 @@ export function concatBytes(...arrays: Uint8Array[]): Uint8Array {
   return res;
 }
 
-export const isBytes = (a: unknown): a is Bytes => (
-  a instanceof Uint8Array ||
-  (a != null && typeof a === 'object' && a.constructor.name === 'Uint8Array')
-);;
+export function isBytes(a: unknown): a is Bytes {
+  return (
+    a instanceof Uint8Array ||
+    (a != null && typeof a === 'object' && a.constructor.name === 'Uint8Array')
+  );
+}
 
 // Types
 export type Bytes = Uint8Array;
