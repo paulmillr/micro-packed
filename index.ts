@@ -14,25 +14,36 @@ import type { Coder as BaseCoder } from '@scure/base';
 export const EMPTY = /* @__PURE__ */ new Uint8Array(); // Empty bytes array
 export const NULL = /* @__PURE__ */ new Uint8Array([0]); // NULL
 
+// Non constant-time equality check.
 export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
 }
 
+/**
+ * Copies several Uint8Arrays into one.
+ */
 export function concatBytes(...arrays: Uint8Array[]): Uint8Array {
-  if (arrays.length === 1) return arrays[0];
-  const length = arrays.reduce((a, arr) => a + arr.length, 0);
-  const result = new Uint8Array(length);
-  for (let i = 0, pad = 0; i < arrays.length; i++) {
-    const arr = arrays[i];
-    result.set(arr, pad);
-    pad += arr.length;
+  let sum = 0;
+  for (let i = 0; i < arrays.length; i++) {
+    const a = arrays[i];
+    if (!isBytes(a)) throw new Error('Uint8Array expected');
+    sum += a.length;
   }
-  return result;
+  const res = new Uint8Array(sum);
+  for (let i = 0, pad = 0; i < arrays.length; i++) {
+    const a = arrays[i];
+    res.set(a, pad);
+    pad += a.length;
+  }
+  return res;
 }
 
-export const isBytes = (b: unknown): b is Bytes => b instanceof Uint8Array;
+export const isBytes = (a: unknown): a is Bytes => (
+  a instanceof Uint8Array ||
+  (a != null && typeof a === 'object' && a.constructor.name === 'Uint8Array')
+);;
 
 // Types
 export type Bytes = Uint8Array;
