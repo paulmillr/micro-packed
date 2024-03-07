@@ -1,7 +1,6 @@
 import { deepStrictEqual, throws } from 'node:assert';
 import { describe, should } from 'micro-should';
 import { hex } from '@scure/base';
-import * as base from '@scure/base';
 import * as P from '../lib/esm/index.js';
 
 const toBytes = (s) => (typeof s === 'string' ? hex.decode(s) : s);
@@ -544,7 +543,7 @@ describe('structures', () => {
     });
 
     should('hex', () => {
-      const h = P.apply(P.bytes(P.U16BE), base.hex);
+      const h = P.apply(P.bytes(P.U16BE), hex);
       const data = '01020304';
       deepStrictEqual(h.decode(h.encode(data)), data);
     });

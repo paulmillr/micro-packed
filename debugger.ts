@@ -1,4 +1,4 @@
-import * as base from '@scure/base';
+import { base64, hex } from '@scure/base';
 import * as P from './index.js';
 
 const UNKNOWN = '(???)';
@@ -60,10 +60,10 @@ function toBytes(data: string | P.Bytes): P.Bytes {
   if (P.isBytes(data)) return data;
   if (typeof data !== 'string') throw new Error('PD: data should be string or Uint8Array');
   try {
-    return base.base64.decode(data);
+    return base64.decode(data);
   } catch (e) {}
   try {
-    return base.hex.decode(data);
+    return hex.decode(data);
   } catch (e) {}
   throw new Error(`PD: data has unknown string format: ${data}`);
 }
@@ -148,13 +148,13 @@ export function table(data: any[]) {
 function fmtData(data: P.Bytes, perLine = 8) {
   const res = [];
   for (let i = 0; i < data.length; i += perLine) {
-    res.push(base.hex.encode(data.slice(i, i + perLine)));
+    res.push(hex.encode(data.slice(i, i + perLine)));
   }
   return res.map((i) => `${bold}${i}${reset}`).join('\n');
 }
 
 function fmtValue(value: any) {
-  if (P.isBytes(value)) return `b(${green}${base.hex.encode(value)}${reset} len=${value.length})`;
+  if (P.isBytes(value)) return `b(${green}${hex.encode(value)}${reset} len=${value.length})`;
   if (typeof value === 'string') return `s(${green}"${value}"${reset} len=${value.length})`;
   if (typeof value === 'number' || typeof value === 'bigint') return `n(${value})`;
   // console.log('fmt', value);

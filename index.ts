@@ -21,6 +21,13 @@ export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
+export function isBytes(a: unknown): a is Bytes {
+  return (
+    a instanceof Uint8Array ||
+    (a != null && typeof a === 'object' && a.constructor.name === 'Uint8Array')
+  );
+}
+
 /**
  * Copies several Uint8Arrays into one.
  */
@@ -38,13 +45,6 @@ export function concatBytes(...arrays: Uint8Array[]): Uint8Array {
     pad += a.length;
   }
   return res;
-}
-
-export function isBytes(a: unknown): a is Bytes {
-  return (
-    a instanceof Uint8Array ||
-    (a != null && typeof a === 'object' && a.constructor.name === 'Uint8Array')
-  );
 }
 
 // Types
@@ -482,6 +482,8 @@ function getPath(objPath: Record<string, any>[], path: string[]): Option<any> {
 
 export function isCoder<T>(elm: any): elm is CoderType<T> {
   return (
+    elm !== null &&
+    typeof elm === 'object' &&
     typeof (elm as CoderType<T>).encode === 'function' &&
     typeof (elm as CoderType<T>).encodeStream === 'function' &&
     typeof (elm as CoderType<T>).decode === 'function' &&
@@ -1145,8 +1147,9 @@ export function mappedTag<
   const mapValue: Record<string, TagValue> = {};
   const tagValue: Record<string, CoderType<any>> = {};
   for (const key in variants) {
-    mapValue[key] = variants[key][0];
-    tagValue[key] = variants[key][1];
+    const v = variants[key];
+    mapValue[key] = v[0];
+    tagValue[key] = v[1];
   }
   return tag(map(tagCoder, mapValue), tagValue) as any as CoderType<T>;
 }
@@ -1276,9 +1279,10 @@ export function base64armor<T>(
     decode(s: string): T {
       let lines = s.replace(markBegin, '').replace(markEnd, '').trim().split('\n');
       lines = lines.map((l) => l.replace('\r', '').trim());
-      if (checksum && lines[lines.length - 1].startsWith('=')) {
+      const last = lines.length - 1;
+      if (checksum && lines[last].startsWith('=')) {
         const body = base64.decode(lines.slice(0, -1).join(''));
-        const cs = lines[lines.length - 1].slice(1);
+        const cs = lines[last].slice(1);
         const realCS = base64.encode(checksum(body));
         if (realCS !== cs)
           throw new Error(`Base64Armor: invalid checksum ${cs} instead of ${realCS}`);
