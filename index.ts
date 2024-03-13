@@ -664,20 +664,20 @@ export const bigint = (size: number, le = false, signed = false, sized = true): 
     },
   });
 
-export const U256LE = bigint(32, true);
-export const U256BE = bigint(32, false);
-export const I256LE = bigint(32, true, true);
-export const I256BE = bigint(32, false, true);
+export const U256LE = /* @__PURE__ */ bigint(32, true);
+export const U256BE = /* @__PURE__ */ bigint(32, false);
+export const I256LE = /* @__PURE__ */ bigint(32, true, true);
+export const I256BE = /* @__PURE__ */ bigint(32, false, true);
 
-export const U128LE = bigint(16, true);
-export const U128BE = bigint(16, false);
-export const I128LE = bigint(16, true, true);
-export const I128BE = bigint(16, false, true);
+export const U128LE = /* @__PURE__ */ bigint(16, true);
+export const U128BE = /* @__PURE__ */ bigint(16, false);
+export const I128LE = /* @__PURE__ */ bigint(16, true, true);
+export const I128BE = /* @__PURE__ */ bigint(16, false, true);
 
-export const U64LE = bigint(8, true);
-export const U64BE = bigint(8, false);
-export const I64LE = bigint(8, true, true);
-export const I64BE = bigint(8, false, true);
+export const U64LE = /* @__PURE__ */ bigint(8, true);
+export const U64BE = /* @__PURE__ */ bigint(8, false);
+export const I64LE = /* @__PURE__ */ bigint(8, true, true);
+export const I64BE = /* @__PURE__ */ bigint(8, false, true);
 
 // TODO: we can speed-up if integers are used. Unclear if it's worth to increase code size.
 // Also, numbers can't use >= 32 bits.
@@ -686,20 +686,20 @@ export const int = (size: number, le = false, signed = false, sized = true): Cod
   return apply(bigint(size, le, signed, sized), coders.number);
 };
 
-export const U32LE = int(4, true);
-export const U32BE = int(4, false);
-export const I32LE = int(4, true, true);
-export const I32BE = int(4, false, true);
+export const U32LE = /* @__PURE__ */ int(4, true);
+export const U32BE = /* @__PURE__ */ int(4, false);
+export const I32LE = /* @__PURE__ */ int(4, true, true);
+export const I32BE = /* @__PURE__ */ int(4, false, true);
 
-export const U16LE = int(2, true);
-export const U16BE = int(2, false);
-export const I16LE = int(2, true, true);
-export const I16BE = int(2, false, true);
+export const U16LE = /* @__PURE__ */ int(2, true);
+export const U16BE = /* @__PURE__ */ int(2, false);
+export const I16LE = /* @__PURE__ */ int(2, true, true);
+export const I16BE = /* @__PURE__ */ int(2, false, true);
 
-export const U8 = int(1, false);
-export const I8 = int(1, false, true);
+export const U8 = /* @__PURE__ */ int(1, false);
+export const I8 = /* @__PURE__ */ int(1, false, true);
 
-export const bool: CoderType<boolean> = wrap({
+export const bool: CoderType<boolean> = /* @__PURE__ */ wrap({
   size: 1,
   encodeStream: (w: Writer, value: boolean) => w.byte(value ? 1 : 0),
   decodeStream: (r: Reader): boolean => {
@@ -741,7 +741,7 @@ export const string = (len: Length, le = false): CoderType<string> => {
   });
 };
 
-export const cstring = string(NULL);
+export const cstring = /* @__PURE__ */ string(NULL);
 
 export const hex = (len: Length, le = false, withZero = false): CoderType<string> => {
   const inner = bytes(len, le);
@@ -1294,7 +1294,7 @@ export function base64armor<T>(
 }
 
 // Does nothing at all
-export const nothing = magic(bytes(0), EMPTY);
+export const nothing = /* @__PURE__ */ magic(/* @__PURE__ */ bytes(0), EMPTY);
 
 export function debug<T>(inner: CoderType<T>): CoderType<T> {
   if (!isCoder(inner)) throw new Error(`debug: invalid inner value ${inner}`);
