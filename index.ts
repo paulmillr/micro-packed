@@ -121,7 +121,7 @@ export type PadFn = (i: number) => number;
 // Purpose: if there are pointers in parsed structure,
 // they can cause read of two distinct ranges:
 // [0-32, 64-128], which means 'pos' is not enough to handle them
-const _bitset = /* @__PURE__ */ {
+const _bitset = {
   BITS: 32,
   FULL_MASK: -1 >>> 0, // 1<<32 will overflow
   len: (len: number) => Math.ceil(len / 32),
