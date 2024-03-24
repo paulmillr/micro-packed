@@ -11,9 +11,8 @@
     "lib/debugger.d.ts",
     "lib/index.d.ts.map",
     "lib/debugger.d.ts.map",
-    "index.ts",
-    "debugger.ts",
-    "lib/esm/package.json"
+    "lib/esm/package.json",
+    "src"
   ],
   "main": "lib/index.js",
   "module": "lib/esm/index.js",
@@ -35,8 +34,8 @@
   },
   "scripts": {
     "build": "tsc && tsc -p tsconfig.esm.json",
-    "lint": "prettier --check index.ts debugger.ts",
-    "format": "prettier --write index.ts debugger.ts",
+    "lint": "prettier --check src",
+    "format": "prettier --write src",
     "test": "node test/index.js && node test/debugger.test.js"
   },
   "author": "Paul Miller (https://paulmillr.com)",
