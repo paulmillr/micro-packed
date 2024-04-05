@@ -1274,7 +1274,7 @@ export function base64armor<T>(
       }
       let body = lines.join('');
       if (checksum) body += `=${base64.encode(checksum(data))}\n`;
-      return `${markBegin}\n\n${body}${markEnd}\n`;
+      return `${markBegin}\n${body}${markEnd}\n`;
     },
     decode(s: string): T {
       let lines = s.replace(markBegin, '').replace(markEnd, '').trim().split('\n');
