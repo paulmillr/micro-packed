@@ -2,9 +2,15 @@
 
 > Less painful binary encoding / decoding
 
-Define complex binary structures using composable primitives.
+Define complex binary structures using composable primitives. Comes with a friendly debugger.
 
-Comes with a friendly debugger.
+Used in:
+
+- [btc-signer](https://github.com/paulmillr/scure-btc-signer) for parsing of Bitcoin Script
+- [eth-signer](https://github.com/paulmillr/micro-eth-signer) for RLP and SSZ decoding. RLP pointers are protected against DoS
+- [sol-signer](https://github.com/paulmillr/micro-sol-signer) for parsing of keys, messages and other things
+- [ed25519-keygen](https://github.com/paulmillr/ed25519-keygen) for lightweight implementations of PGP and SSH
+- [micro-otp](https://github.com/paulmillr/micro-signer) just briefly
 
 ## Usage
 
