@@ -57,7 +57,7 @@ class DebugReader extends P.Reader {
 }
 
 function toBytes(data: string | P.Bytes): P.Bytes {
-  if (P.isBytes(data)) return data;
+  if (P.utils.isBytes(data)) return data;
   if (typeof data !== 'string') throw new Error('PD: data should be string or Uint8Array');
   try {
     return base64.decode(data);
@@ -154,7 +154,7 @@ function fmtData(data: P.Bytes, perLine = 8) {
 }
 
 function fmtValue(value: any) {
-  if (P.isBytes(value)) return `b(${green}${hex.encode(value)}${reset} len=${value.length})`;
+  if (P.utils.isBytes(value)) return `b(${green}${hex.encode(value)}${reset} len=${value.length})`;
   if (typeof value === 'string') return `s(${green}"${value}"${reset} len=${value.length})`;
   if (typeof value === 'number' || typeof value === 'bigint') return `n(${value})`;
   // console.log('fmt', value);
@@ -254,7 +254,7 @@ export function diff(
   const DEF = { data: P.EMPTY, path: '' };
   for (let i = 0; i < len; i++) {
     const [a, e] = [_actual[i] || DEF, _expected[i] || DEF];
-    if (P.equalBytes(a.data, e.data) && skipSame) continue;
+    if (P.utils.equalBytes(a.data, e.data) && skipSame) continue;
     const [adata, edata] = diffData(a.data, e.data);
     data.push({
       'Data (A)': adata,

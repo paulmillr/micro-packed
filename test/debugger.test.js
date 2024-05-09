@@ -17,7 +17,7 @@ should('Basic', () => {
 
 should('Fail to decode', () => {
   const enc = testStruct.encode({ a: 1234, b: 'test', c: [1, 2, 3] });
-  throws(() => PD.decode(testStruct, P.concatBytes(enc, hex.decode('0102030405'))));
+  throws(() => PD.decode(testStruct, P.utils.concatBytes(enc, hex.decode('0102030405'))));
 });
 
 should('PSBT1', () => {
