@@ -1,18 +1,6 @@
 import type { Coder as BaseCoder } from '@scure/base';
 import { hex as baseHex, utf8 } from '@scure/base';
 
-// copied from scure-base
-// export interface BCoder<F, T> {
-//   encode(from: F): T;
-//   decode(to: T): F;
-// }
-// declare const TextEncoder: any;
-// declare const TextDecoder: any;
-// const utf8: BytesCoder<string> = {
-//   encode: (data) => new TextDecoder().decode(data),
-//   decode: (str) => new TextEncoder().encode(str),
-// };
-
 /**
  * Define complex binary structures using composable primitives.
  * Main ideas:
@@ -34,6 +22,8 @@ import { hex as baseHex, utf8 } from '@scure/base';
  *   }))
  * });
  */
+
+// TODO: remove dependency on scure-base & inline?
 
 /**
  * Shortcut to zero-length (empty) byte array
@@ -104,7 +94,6 @@ export const utils = {
   equalBytes,
   isBytes,
   isCoder,
-  checkBounds,
   concatBytes,
   createView,
   isPlainObject,
@@ -1186,7 +1175,7 @@ export const int = (size: number, le = false, signed = false, sized = true): Cod
   if (typeof sized !== 'boolean')
     throw new Error(`int/sized: expected boolean, got ${typeof sized}`);
   if (size > 6) throw new Error('int supports size up to 6 bytes (48 bits): use bigints instead');
-  return apply(bigint(size, le, signed, sized), coders.number);
+  return apply(bigint(size, le, signed, sized), coders.numberBigint);
 };
 
 type ViewCoder = {

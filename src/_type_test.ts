@@ -70,7 +70,7 @@ assertType<P.CoderType<{ TAG: 'a'; data: string } | { TAG: 'b'; data: boolean }>
 );
 // NOTE: U256 is bigint by default, but we can cast it to number
 assertType<P.CoderType<{ TAG: 1; data: string } | { TAG: 2; data: boolean }>>(
-  P.tag(P.apply(P.U256BE, P.coders.number), { 1: P.cstring, 2: P.bool })
+  P.tag(P.apply(P.U256BE, P.coders.numberBigint), { 1: P.cstring, 2: P.bool })
 );
 // MappedTag
 assertType<P.CoderType<{ TAG: 'a'; data: string } | { TAG: 'b'; data: boolean }>>(
@@ -113,7 +113,7 @@ assertType<P.CoderType<'a' | 'b' | 'c'>>(e);
 
 // match
 assertType<base.Coder<bigint | [string, unknown][], number | Record<string, unknown>>>(
-  P.coders.match([P.coders.number, P.coders.dict()])
+  P.coders.match([P.coders.numberBigint, P.coders.dict()])
 );
 
 const m1: base.Coder<number | undefined, string> = 1 as any;

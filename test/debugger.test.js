@@ -55,7 +55,7 @@ should('PSBT1', () => {
       return num;
     },
   });
-  const CompactSizeLen = P.apply(CompactSize, P.coders.number);
+  const CompactSizeLen = P.apply(CompactSize, P.coders.numberBigint);
   const PKey = P.struct({ type: CompactSizeLen, data: P.bytes(null) });
   const PSBTKeyPair = P.array(
     P.NULL,

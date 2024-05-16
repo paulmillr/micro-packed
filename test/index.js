@@ -1121,9 +1121,9 @@ describe('structures', () => {
 
 describe('coders', () => {
   should('number', () => {
-    deepStrictEqual(P.coders.number.encode(1000n), 1000);
-    deepStrictEqual(P.coders.number.encode(9007199254740991n), 9007199254740991);
-    throws(() => P.coders.number.encode(9007199254740992n));
+    deepStrictEqual(P.coders.numberBigint.encode(1000n), 1000);
+    deepStrictEqual(P.coders.numberBigint.encode(9007199254740991n), 9007199254740991);
+    throws(() => P.coders.numberBigint.encode(9007199254740992n));
   });
 
   should('decimal', () => {
