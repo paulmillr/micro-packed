@@ -1,6 +1,6 @@
 {
   "name": "micro-packed",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Define complex binary structures using composable primitives",
   "files": [
     "lib/index.js",
@@ -54,14 +54,6 @@
     "prettier": "3.1.1",
     "typescript": "5.3.2"
   },
-  "keywords": [
-    "encode",
-    "encoder",
-    "binary",
-    "bytes",
-    "struct",
-    "tuple",
-    "enum"
-  ],
+  "keywords": ["encode", "encoder", "binary", "bytes", "struct", "tuple", "enum"],
   "funding": "https://paulmillr.com/funding/"
 }
