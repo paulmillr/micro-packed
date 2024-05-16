@@ -66,9 +66,9 @@ It represents their size. There are four different types of size:
 - terminator: Uint8Array (will parse until these bytes are matched)
 - null: (null, will parse until end of buffer)
 
-### Primitive types
+## Primitive types
 
-#### P.bytes
+### P.bytes
 
 Bytes CoderType with a specified length and endianness.
 
@@ -90,7 +90,7 @@ Following shortcuts are also available:
 - `P.EMPTY`: Shortcut to zero-length (empty) byte array
 - `P.NULL`: Shortcut to one-element (element is 0) byte array
 
-#### P.string
+### P.string
 
 String CoderType with a specified length and endianness.
 
@@ -107,7 +107,7 @@ const nullTerminatedString = P.cstring; // NUL-terminated string
 const _cstring = P.string(new Uint8Array([0])); // Same thing
 ```
 
-#### P.hex
+### P.hex
 
 Hexadecimal string CoderType with a specified length, endianness, and optional 0x prefix.
 
@@ -124,7 +124,7 @@ const dynamicHex = P.hex(P.U16BE, { isLE: false, with0x: true }); // Hex string 
 const fixedHex = P.hex(32, { isLE: false, with0x: false }); // Fixed-length 32-byte hex string without 0x prefix
 ```
 
-#### P.constant
+### P.constant
 
 Creates a CoderType for a constant value. The function enforces this value during encoding,
 ensuring it matches the provided constant. During decoding, it always returns the constant value.
@@ -141,7 +141,7 @@ The actual value is not written to or read from any byte stream; it's used only 
 const constantU8 = P.constant(123);
 ```
 
-#### P.pointer
+### P.pointer
 
 Pointer to a value using a pointer CoderType and an inner CoderType.
 Pointers are scoped, and the next pointer in the dereference chain is offset by the previous one.
@@ -160,9 +160,9 @@ same region of memory cannot be read multiple times.
 const pointerToU8 = P.pointer(P.U16BE, P.U8); // Pointer to a single U8 value
 ```
 
-### Complex types
+## Complex types
 
-#### P.array
+### P.array
 
 Array of items (inner type) with a specified length.
 
@@ -178,7 +178,7 @@ const a3 = P.array(null, child); // Unknown size array, will parse until end of 
 const a4 = P.array(new Uint8Array([0]), child); // zero-terminated array (NOTE: terminator can be any buffer)
 ```
 
-#### P.struct
+### P.struct
 
 Structure of composable primitives (C/Rust struct)
 
@@ -200,7 +200,7 @@ const myStruct = P.struct({
 });
 ```
 
-#### P.tuple
+### P.tuple
 
 Tuple (unnamed structure) of CoderTypes. Same as struct but with unnamed fields.
 
@@ -212,7 +212,7 @@ Tuple (unnamed structure) of CoderTypes. Same as struct but with unnamed fields.
 const myTuple = P.tuple([P.U8, P.U16LE, P.string(P.U8)]);
 ```
 
-#### P.map
+### P.map
 
 Mapping between encoded values and string representations.
 
@@ -238,7 +238,7 @@ const byteMap = P.map(P.bytes(2, false), {
 });
 ```
 
-#### P.tag
+### P.tag
 
 Tagged union of CoderTypes, where the tag value determines which CoderType to use.
 The decoded value will have the structure `{ TAG: number, data: ... }`.
@@ -261,7 +261,7 @@ const encoded = taggedUnion.encode({ TAG: 0x01, data: 'hello' }); // Encodes the
 const decoded = taggedUnion.decode(encoded); // Decodes the encoded value back to { TAG: 0x01, data: 'hello' }
 ```
 
-#### P.mappedTag
+### P.mappedTag
 
 Mapping between encoded values, string representations, and CoderTypes using a tag CoderType.
 
@@ -283,9 +283,9 @@ const cborValue: P.CoderType<CborValue> = P.mappedTag(P.bits(3), {
 });
 ```
 
-### Padding
+## Padding, prefix, magic
 
-#### P.padLeft
+### P.padLeft
 
 Pads a CoderType with a specified block size and padding function on the left side.
 
@@ -305,7 +305,7 @@ const paddedU32BE = P.padLeft(4, P.U32BE);
 const paddedString = P.padLeft(16, P.string(P.U8), (i) => i + 1);
 ```
 
-#### P.padRight
+### P.padRight
 
 Pads a CoderType with a specified block size and padding function on the right side.
 
@@ -325,7 +325,7 @@ const paddedU16BE = P.padRight(2, P.U16BE);
 const paddedBytes = P.padRight(8, P.bytes(null), (i) => i + 1);
 ```
 
-#### P.ZeroPad
+### P.ZeroPad
 
 Shortcut to zero-bytes padding
 
@@ -378,9 +378,9 @@ Magic bytes CoderType that encodes/decodes a constant byte array or string.
 const magicBytes = P.magicBytes('MAGIC');
 ```
 
-### Flags
+## Flags
 
-#### P.flag
+### P.flag
 
 Flag CoderType that encodes/decodes a boolean value based on the presence of a marker.
 
@@ -398,7 +398,7 @@ const flagXor = P.flag(new Uint8Array([0x01, 0x02]), true); // Encodes true as u
 const s = P.struct({ f: P.flag(new Uint8Array([0x0, 0x1])), f2: P.flagged('f', P.U32BE) });
 ```
 
-#### P.flagged
+### P.flagged
 
 Conditional CoderType that encodes/decodes a value only if a flag is present.
 
@@ -410,7 +410,7 @@ Conditional CoderType that encodes/decodes a value only if a flag is present.
 | inner | Inner CoderType for the value.                            |
 | def   | Optional default value to use if the flag is not present. |
 
-#### P.optional
+### P.optional
 
 Optional CoderType that encodes/decodes a value based on a flag.
 
@@ -446,9 +446,9 @@ const s2 = P.struct({
 });
 ```
 
-### Wrappers
+## Wrappers
 
-#### P.apply
+### P.apply
 
 Applies a base coder to a CoderType.
 
@@ -464,7 +464,7 @@ import { hex } from '@scure/base';
 const hex = P.apply(P.bytes(32), hex); // will decode bytes into a hex string
 ```
 
-#### P.wrap
+### P.wrap
 
 Wraps a stream encoder into a generic encoder and optionally validation function
 
@@ -488,7 +488,7 @@ const checkedU8 = P.wrap({
 });
 ```
 
-#### P.lazy
+### P.lazy
 
 Lazy CoderType that is evaluated at runtime.
 
@@ -509,7 +509,7 @@ const tree = P.struct({
 });
 ```
 
-### Bit fiddling
+## Bit fiddling
 
 Bit fiddling is implementing using primitive called Bitset: a small structure to store position of ranges that have been read.
 Can be more efficient when internal trees are utilized at the cost of complexity.
@@ -518,7 +518,7 @@ Purpose: if there are pointers in parsed structure,
 they can cause read of two distinct ranges:
 [0-32, 64-128], which means 'pos' is not enough to handle them
 
-#### P.bits
+### P.bits
 
 CoderType for parsing individual bits.
 NOTE: Structure should parse whole amount of bytes before it can start parsing byte-level elements.
@@ -533,7 +533,7 @@ NOTE: Structure should parse whole amount of bytes before it can start parsing b
 const s = P.struct({ magic: P.bits(1), version: P.bits(1), tag: P.bits(4), len: P.bits(2) });
 ```
 
-#### P.bitset
+### P.bitset
 
 Bitset of boolean values with optional padding.
 
@@ -548,7 +548,7 @@ Bitset of boolean values with optional padding.
 const myBitset = P.bitset(['flag1', 'flag2', 'flag3', 'flag4'], true);
 ```
 
-### utils
+## utils
 
 #### P.validate
 
@@ -570,7 +570,7 @@ const val = (n: number) => {
 const RangedInt = P.validate(P.U32LE, val); // Will check if value is <= 10 during encoding and decoding
 ```
 
-### coders.dict
+#### coders.dict
 
 Base coder for working with dictionaries (records, objects, key-value map)
 Dictionary is dynamic type like: `[key: string, value: any][]`
@@ -584,7 +584,7 @@ const dict: P.CoderType<Record<string, number>> = P.apply(
 );
 ```
 
-### coders.decimal
+#### coders.decimal
 
 Base coder for working with decimal numbers.
 
@@ -601,7 +601,7 @@ decimal8.encode(630880845n); // '6.30880845'
 decimal8.decode('6.30880845'); // 630880845n
 ```
 
-### coders.match
+#### coders.match
 
 Combines multiple coders into a single coder, allowing conditional encoding/decoding based on input.
 Acts as a parser combinator, splitting complex conditional coders into smaller parts.
@@ -620,7 +620,7 @@ Acts as a parser combinator, splitting complex conditional coders into smaller p
 
 Reverses direction of coder
 
-### Debugger
+## Debugger
 
 There is a second optional module for debugging into console.
 
