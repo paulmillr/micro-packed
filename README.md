@@ -35,46 +35,16 @@ const s = P.struct({
 ```
 
 - [Basics](#basics)
-  - [Interfaces](#interfaces)
-  - [Flexible size](#flexible-size)
-- [Primitives](#primitives)
-  - [P.bytes](#pbytes)
-  - [P.string](#pstring)
-  - [P.hex](#phex)
-  - [P.constant](#pconstant)
-  - [P.pointer](#ppointer)
-  - [Complex types](#complex-types)
-    - [P.array](#parray)
-    - [P.struct](#pstruct)
-    - [P.tuple](#ptuple)
-    - [P.map](#pmap)
-    - [P.tag](#ptag)
-    - [P.mappedTag](#pmappedtag)
-  - [Padding, prefix, magic](#padding-prefix-magic)
-    - [P.padLeft](#ppadleft)
-    - [P.padRight](#ppadright)
-    - [P.ZeroPad](#pzeropad)
-    - [P.prefix](#pprefix)
-    - [P.magic](#pmagic)
-    - [P.magicBytes](#pmagicbytes)
-  - [Flags](#flags)
-    - [P.flag](#pflag)
-    - [P.flagged](#pflagged)
-    - [P.optional](#poptional)
-  - [Wrappers](#wrappers)
-    - [P.apply](#papply)
-    - [P.wrap](#pwrap)
-    - [P.lazy](#plazy)
-  - [Bit fiddling](#bit-fiddling)
-    - [P.bits](#pbits)
-    - [P.bitset](#pbitset)
-  - [utils](#utils)
-    - [P.validate](#pvalidate)
-  - [Debugger](#debugger)
+- Primitive types: [P.bytes](#pbytes), [P.string](#pstring), [P.hex](#phex), [P.constant](#pconstant), [P.pointer](#ppointer)
+- Complex types: [P.array](#parray), [P.struct](#pstruct), [P.tuple](#ptuple), [P.map](#pmap), [P.tag](#ptag), [P.mappedTag](#pmappedtag)
+- Padding, prefix, magic: [P.padLeft](#ppadleft), [P.padRight](#ppadright), [P.prefix](#pprefix), [P.magic](#pmagic), [P.magicBytes](#pmagicbytes)
+- Flags: [P.flag](#pflag), [P.flagged](#pflagged), [P.optional](#poptional)
+- Wrappers: [P.apply](#papply), [P.wrap](#pwrap), [P.lazy](#plazy)
+- Bit fiddling: [P.bits](#pbits), [P.bitset](#pbitset)
+- [utils](#utils): [P.validate](#pvalidate), [coders.decimal](#codersdecimal)
+- [Debugger](#debugger)
 
-## Basics
-
-### Interfaces
+### Basics
 
 There are 3 main interfaces:
 
@@ -86,7 +56,7 @@ Coder and BytesCoder use `encode` / `decode` methods
 
 BytesCoderStream use `encodeStream` and `decodeStream`
 
-### Flexible size
+#### Flexible size
 
 Many primitives accept length / size / len as their argument.
 It represents their size. There are four different types of size:
@@ -96,9 +66,9 @@ It represents their size. There are four different types of size:
 - terminator: Uint8Array (will parse until these bytes are matched)
 - null: (null, will parse until end of buffer)
 
-## Primitives
+### Primitive types
 
-### P.bytes
+#### P.bytes
 
 Bytes CoderType with a specified length and endianness.
 
@@ -120,7 +90,7 @@ Following shortcuts are also available:
 - `P.EMPTY`: Shortcut to zero-length (empty) byte array
 - `P.NULL`: Shortcut to one-element (element is 0) byte array
 
-### P.string
+#### P.string
 
 String CoderType with a specified length and endianness.
 
@@ -137,7 +107,7 @@ const nullTerminatedString = P.cstring; // NUL-terminated string
 const _cstring = P.string(new Uint8Array([0])); // Same thing
 ```
 
-### P.hex
+#### P.hex
 
 Hexadecimal string CoderType with a specified length, endianness, and optional 0x prefix.
 
@@ -154,7 +124,7 @@ const dynamicHex = P.hex(P.U16BE, { isLE: false, with0x: true }); // Hex string 
 const fixedHex = P.hex(32, { isLE: false, with0x: false }); // Fixed-length 32-byte hex string without 0x prefix
 ```
 
-### P.constant
+#### P.constant
 
 Creates a CoderType for a constant value. The function enforces this value during encoding,
 ensuring it matches the provided constant. During decoding, it always returns the constant value.
@@ -171,7 +141,7 @@ The actual value is not written to or read from any byte stream; it's used only 
 const constantU8 = P.constant(123);
 ```
 
-### P.pointer
+#### P.pointer
 
 Pointer to a value using a pointer CoderType and an inner CoderType.
 Pointers are scoped, and the next pointer in the dereference chain is offset by the previous one.
