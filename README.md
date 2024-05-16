@@ -34,6 +34,8 @@ const s = P.struct({
 });
 ```
 
+Table of contents:
+
 - [Basics](#basics)
 - Primitive types: [P.bytes](#pbytes), [P.string](#pstring), [P.hex](#phex), [P.constant](#pconstant), [P.pointer](#ppointer)
 - Complex types: [P.array](#parray), [P.struct](#pstruct), [P.tuple](#ptuple), [P.map](#pmap), [P.tag](#ptag), [P.mappedTag](#pmappedtag)
