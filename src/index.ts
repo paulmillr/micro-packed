@@ -25,6 +25,19 @@ import { hex as baseHex, utf8 } from '@scure/base';
 
 // TODO: remove dependency on scure-base & inline?
 
+/*
+Exports can be groupped like this:
+
+- Primitive types: P.bytes, P.string, P.hex, P.constant, P.pointer
+- Complex types: P.array, P.struct, P.tuple, P.map, P.tag, P.mappedTag
+- Padding, prefix, magic: P.padLeft, P.padRight, P.prefix, P.magic, P.magicBytes
+- Flags: P.flag, P.flagged, P.optional
+- Wrappers: P.apply, P.wrap, P.lazy
+- Bit fiddling: P.bits, P.bitset
+- utils: P.validate, coders.decimal
+- Debugger
+*/
+
 /**
  * Shortcut to zero-length (empty) byte array
  */
@@ -94,6 +107,7 @@ export const utils = {
   equalBytes,
   isBytes,
   isCoder,
+  checkBounds,
   concatBytes,
   createView,
   isPlainObject,
@@ -1438,6 +1452,8 @@ export const string = (len: Length, le = false): CoderType<string> =>
  * NUL-terminated string CoderType.
  */
 export const cstring = /* @__PURE__ */ string(NULL);
+
+type HexOpts = { isLE?: boolean; with0x?: boolean };
 /**
  * Hexadecimal string CoderType with a specified length, endianness, and optional 0x prefix.
  * @param len - Length CoderType (dynamic size), number (fixed size), Uint8Array (for terminator), or null (will parse until end of buffer)
@@ -1448,7 +1464,10 @@ export const cstring = /* @__PURE__ */ string(NULL);
  * const dynamicHex = P.hex(P.U16BE, {isLE: false, with0x: true}); // Hex string with 0x prefix and U16BE length
  * const fixedHex = P.hex(32, {isLE: false, with0x: false}); // Fixed-length 32-byte hex string without 0x prefix
  */
-export const hex = (len: Length, options = { isLE: false, with0x: false }): CoderType<string> => {
+export const hex = (
+  len: Length,
+  options: HexOpts = { isLE: false, with0x: false }
+): CoderType<string> => {
   let inner = apply(bytes(len, options.isLE), baseHex);
   if (typeof options.with0x !== 'boolean')
     throw new Error(`hex/with0x: expected boolean, got ${typeof options.with0x}`);
