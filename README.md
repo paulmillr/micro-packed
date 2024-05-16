@@ -7,6 +7,7 @@ Define complex binary structures using composable primitives. Comes with a frien
 Used in:
 
 - [btc-signer](https://github.com/paulmillr/scure-btc-signer) for parsing of Bitcoin Script
+- [micro-ordinals](https://github.com/paulmillr/micro-ordinals) for ordinal parsing
 - [eth-signer](https://github.com/paulmillr/micro-eth-signer) for RLP and SSZ decoding. RLP pointers are protected against DoS
 - [sol-signer](https://github.com/paulmillr/micro-sol-signer) for parsing of keys, messages and other things
 - [ed25519-keygen](https://github.com/paulmillr/ed25519-keygen) for lightweight implementations of PGP and SSH
@@ -18,23 +19,18 @@ Used in:
 
 ```ts
 import * as P from 'micro-packed';
-let other = P.struct({ a: U16BE, b: U16LE });
-let s = P.struct({
-  field1: P.U32BE,
-  // strings, bytes, prefix and array first arg is length. It can be:
-  // - dynamic: via CoderType<number>. First U8 in this case if length of elemnt
-  field2: P.string(P.U8),
-  // - fixed length, reads 32 bytes, no prefix
-  field3: P.bytes(32),
-  // NOTE: array uses prefix as element count, not byte count!
-  field4: P.array(P.U16BE, P.struct({subField1: P.U64BE, subField2: P.string(10) }))
-  // - string to access previous fields in structure
-  field5: P.array('field1', P.U8), // Array of size 'field1' of U8
-  // Use sub-structure
-  field6: other,
-  field7: P.string(null),
-  // - null -- read until buffer exhausted
-  field8: P.array(null, P.U64BE),
+const s = P.struct({
+  field1: P.U32BE, // 32-bit unsigned big-endian integer
+  field2: P.string(P.U8), // String with U8 length prefix
+  field3: P.bytes(32), // 32 bytes
+  field4: P.array(
+    P.U16BE,
+    P.struct({
+      // Array of structs with U16BE length
+      subField1: P.U64BE, // 64-bit unsigned big-endian integer
+      subField2: P.string(10), // 10-byte string
+    })
+  ),
 });
 ```
 
@@ -230,10 +226,10 @@ Allows definition of circular structures
 ```ts
 import * as P from 'micro-packed';
 
-type Tree = { name: string; childs: Tree[] };
+type Tree = { name: string; children: Tree[] };
 const tree = P.struct({
   name: P.cstring,
-  childs: P.array(
+  children: P.array(
     P.U16BE,
     P.lazy((): P.CoderType<Tree> => tree)
   ),
@@ -274,20 +270,27 @@ Easy debug (via console.log), just wrap specific coder for it:
 
 ```ts
 import * as P from 'micro-packed';
+import * as PD from 'micro-packed/debugger';
 
-const debugInt = P.debug(P.U32LE); // Will print info to console
+const debugInt = PD.debug(P.U32LE); // Will print info to console
 ```
 
 ### Primitive types
 
-There is: bool, U8, U[16|32|64|128|256][le|be]
-Other numeric types can be created via
+Available types:
+
+- uint8, int8: unsigned and signed integers
+- uint16, uint32, uint64, uint128, uint256 and signed ones
+- float32, float64 for IEEE 754-2008 float
 
 ```ts
 import * as P from 'micro-packed';
-
-const U32LE = P.int(4, true); // up to 6 bytes (48 bits)
-const I256LE = P.bigint(32, true, true); // no limits
+// P.U8, P.I8,
+// P.U16BE, P.U32BE, P.U64BE, P.U128BE, P.U256BE,
+// P.U16LE, P.U32LE, P.U64LE, P.U128LE, P.U256LE,
+// P.I16BE, P.I32BE, P.I64BE, P.I128BE, P.I256BE,
+// P.I16LE, P.I32LE, P.I64LE, P.I128LE, P.I256LE,
+// P.F32BE, P.F64BE, P.F32LE, P.F64LE,
 ```
 
 ## License

@@ -1,0 +1,17 @@
+{
+  "name": "benchmark",
+  "private": true,
+  "version": "0.1.0",
+  "description": "benchmarks",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "bench": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "micro-packed": "file:.."
+  }
+}

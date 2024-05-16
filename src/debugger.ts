@@ -1,5 +1,6 @@
 import { base64, hex } from '@scure/base';
 import * as P from './index.js';
+const Path = P._TEST.Path; // Very internal stuff, for debug only.
 
 const UNKNOWN = '(???)';
 const bold = '\x1b[1m';
@@ -10,44 +11,57 @@ const green = '\x1b[32m';
 const yellow = '\x1b[33m';
 
 type DebugPath = { start: number; end?: number; path: string; value?: any };
-class DebugReader extends P.Reader {
+class DebugReader extends P._TEST._Reader {
   debugLst: DebugPath[] = [];
   cur?: DebugPath;
   get lastElm() {
     if (this.debugLst.length) return this.debugLst[this.debugLst.length - 1];
     return { start: 0, end: 0, path: '' };
   }
-  fieldPathPush(s: string) {
-    const last = this.lastElm;
-    if (last.end === undefined) last.end = this.pos;
-    else if (last.end !== this.pos) {
-      this.debugLst.push({
-        path: [...this.fieldPath, UNKNOWN].join('/'),
-        start: last.end,
-        end: this.pos,
+  pushObj(obj: P.StructOut, objFn: P._PathObjFn) {
+    return Path.pushObj(this.stack, obj, (cb) => {
+      objFn((field: string, fieldFn: Function) => {
+        cb(field, () => {
+          {
+            const last = this.lastElm;
+            if (last.end === undefined) last.end = this.pos;
+            else if (last.end !== this.pos) {
+              this.debugLst.push({
+                path: `${Path.path(this.stack)}/${UNKNOWN}`,
+                start: last.end,
+                end: this.pos,
+              });
+            }
+            this.cur = { path: `${Path.path(this.stack)}/${field}`, start: this.pos };
+          }
+          fieldFn();
+          {
+            // happens if pop after pop (exit from nested structure)
+            if (!this.cur) {
+              const last = this.lastElm;
+              if (last.end === undefined) last.end = this.pos;
+              else if (last.end !== this.pos) {
+                this.debugLst.push({
+                  start: last.end,
+                  end: this.pos,
+                  path: last.path + `/${UNKNOWN}`,
+                });
+              }
+            } else {
+              this.cur.end = this.pos;
+              const last = this.stack[this.stack.length - 1];
+              const lastItem = last.obj;
+              const lastField = last.field;
+              if (lastItem && lastField !== undefined) this.cur.value = lastItem[lastField];
+              this.debugLst.push(this.cur);
+              this.cur = undefined;
+            }
+          }
+        });
       });
-    }
-    this.cur = { path: [...this.fieldPath, s].join('/'), start: this.pos };
-    super.fieldPathPush(s);
+    });
   }
-  fieldPathPop() {
-    // happens if pop after pop (exit from nested structure)
-    if (!this.cur) {
-      const last = this.lastElm;
-      if (last.end === undefined) last.end = this.pos;
-      else if (last.end !== this.pos) {
-        this.debugLst.push({ start: last.end, end: this.pos, path: last.path + `/${UNKNOWN}` });
-      }
-    } else {
-      this.cur.end = this.pos;
-      const lastItem = this.path[this.path.length - 1];
-      const lastField = this.fieldPath[this.fieldPath.length - 1];
-      if (lastItem && lastField !== undefined) this.cur.value = lastItem[lastField];
-      this.debugLst.push(this.cur);
-      this.cur = undefined;
-    }
-    super.fieldPathPop();
-  }
+
   finishDebug(): void {
     const end = this.data.length;
     if (this.cur) this.debugLst.push({ end, ...this.cur });
@@ -267,4 +281,25 @@ export function diff(
   table(data);
   // @ts-ignore
   console.log('==== /DIFF ====');
+}
+
+/**
+ * Wraps a CoderType with debug logging for encoding and decoding operations.
+ * @param inner - Inner CoderType to wrap.
+ * @returns Inner wrapped in debug prints via console.log.
+ * @example
+ * const debugInt = P.debug(P.U32LE); // Will print info to console on encoding/decoding
+ */
+export function debug<T>(inner: P.CoderType<T>): P.CoderType<T> {
+  if (!P.isCoder(inner)) throw new Error(`debug: invalid inner value ${inner}`);
+  const log = (name: string, rw: P.Reader | P.Writer, value: any) => {
+    // @ts-ignore
+    console.log(`DEBUG/${name}(${Path.path(rw.stack)}):`, { type: typeof value, value });
+    return value;
+  };
+  return P.wrap({
+    size: inner.size,
+    encodeStream: (w: P.Writer, value: T) => inner.encodeStream(w, log('encode', w, value)),
+    decodeStream: (r: P.Reader): T => log('decode', r, inner.decodeStream(r)),
+  });
 }

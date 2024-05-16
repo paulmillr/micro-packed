@@ -90,10 +90,10 @@ assertType<P.CoderType<Record<string, number>>>(P.apply(d1, P.coders.dict()));
 
 // Lazy
 assertType<P.CoderType<boolean>>(P.lazy(() => P.bool));
-type Tree = { name: string; childs: Tree[] };
+type Tree = { name: string; children: Tree[] };
 const tree = P.struct({
   name: P.cstring,
-  childs: P.array(
+  children: P.array(
     P.U16BE,
     P.lazy((): P.CoderType<Tree> => tree)
   ),

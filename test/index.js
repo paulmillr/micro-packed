@@ -2,20 +2,23 @@ import { deepStrictEqual, throws } from 'node:assert';
 import { describe, should } from 'micro-should';
 import { hex } from '@scure/base';
 import * as P from '../lib/esm/index.js';
+import * as PD from '../lib/esm/debugger.js';
+
+const Reader = P._TEST._Reader;
+const Writer = P._TEST._Writer;
 
 const toBytes = (s) => (typeof s === 'string' ? hex.decode(s) : s);
 const test = (name, v) => {
   describe(name, () => {
     should('correct', () => {
       for (const [expVal, expHex] of v.correct || []) {
-        const bytes = toBytes(expHex);
         const encoded = v.p.encode(expVal);
-        deepStrictEqual(encoded, bytes, 'encode');
+        deepStrictEqual(hex.encode(encoded), expHex, 'encode');
         deepStrictEqual(v.p.decode(encoded), expVal, 'decode(encode)');
         // console.log('ENC', encoded);
-        const decoded = v.p.decode(bytes);
+        const decoded = v.p.decode(hex.decode(expHex));
         deepStrictEqual(decoded, expVal, 'decode');
-        deepStrictEqual(v.p.encode(decoded), bytes, 'encode(decode)');
+        deepStrictEqual(hex.encode(v.p.encode(decoded)), expHex, 'encode(decode)');
       }
     });
     should('err values', () => {
@@ -112,6 +115,61 @@ describe('primitives', () => {
     ],
     errValues: [-1n, 2n ** 64n],
   });
+  test('F64LE', {
+    p: P.F64LE,
+    correct: [
+      [0, '0000000000000000'],
+      [1, '000000000000f03f'],
+      [Infinity, '000000000000f07f'],
+      [-Infinity, '000000000000f0ff'],
+      [NaN, '000000000000f87f'],
+    ],
+    errValues: [0n],
+  });
+  test('F64BE', {
+    p: P.F64BE,
+    correct: [
+      [0, '0000000000000000'],
+      [1, '3ff0000000000000'],
+      [Infinity, '7ff0000000000000'],
+      [-Infinity, 'fff0000000000000'],
+      [NaN, '7ff8000000000000'],
+    ],
+    errValues: [0n],
+  });
+  test('F32LE', {
+    p: P.F32LE,
+    correct: [
+      [0, '00000000'],
+      [1, '0000803f'],
+      [16777216, '0000804b'],
+      [2 ** 127, '0000007f'],
+      [Infinity, '0000807f'],
+      [-Infinity, '000080ff'],
+      [NaN, '0000c07f'],
+    ],
+    errValues: [16777216 + 1, 2 ** 128],
+  });
+  test('F32BE', {
+    p: P.F32BE,
+    correct: [
+      [0, '00000000'],
+      [1, '3f800000'],
+      [16777216, '4b800000'],
+      [2 ** 127, '7f000000'],
+      [Infinity, '7f800000'],
+      [-Infinity, 'ff800000'],
+      [NaN, '7fc00000'],
+      // https://en.wikipedia.org/wiki/Single-precision_floating-point_format#Notable_single-precision_cases
+      [2 ** -126 * 2 ** -23, '00000001'], // smallest positive subnormal number
+      [2 ** -126 * (1 - 2 ** -23), '007fffff'], // largest subnormal number
+      [2 ** -126, '00800000'], // smallest positive normal number
+      [2 ** 127 * (2 - 2 ** -23), '7f7fffff'], // largest normal number
+      [1 - 2 ** -24, '3f7fffff'], // largest number less than one
+      [1 + 2 ** -23, '3f800001'], // smallest number larger than one
+    ],
+    errValues: [16777216 + 1, 2 ** 128],
+  });
 
   should('bigint size', () => {
     // 32 bit -> 4 bytes
@@ -160,8 +218,8 @@ describe('primitives', () => {
     test('basic', {
       p: P.struct({ f: P.bits(5), f1: P.bits(1), f2: P.bits(1), f3: P.bits(1) }),
       correct: [
-        [{ f: 1, f1: 0, f2: 1, f3: 0 }, new Uint8Array([0b00001010])],
-        [{ f: 31, f1: 0, f2: 1, f3: 1 }, new Uint8Array([0b11111011])],
+        [{ f: 1, f1: 0, f2: 1, f3: 0 }, hex.encode(new Uint8Array([0b00001010]))],
+        [{ f: 31, f1: 0, f2: 1, f3: 1 }, hex.encode(new Uint8Array([0b11111011]))],
       ],
       errValues: [
         { f: 1, f1: 0, f2: 1, f3: 2 },
@@ -170,11 +228,11 @@ describe('primitives', () => {
     });
     test('two bytes', {
       p: P.struct({ f: P.bits(5), f1: P.bits(3), f2: P.U8 }),
-      correct: [[{ f: 1, f1: 1, f2: 254 }, new Uint8Array([0b00001001, 254])]],
+      correct: [[{ f: 1, f1: 1, f2: 254 }, hex.encode(new Uint8Array([0b00001001, 254]))]],
     });
     test('magic', {
       p: P.struct({ a: P.magic(P.bits(1), 1), b: P.bits(7), c: P.U8 }),
-      correct: [[{ a: undefined, b: 0, c: 0 }, new Uint8Array([128, 0])]],
+      correct: [[{ a: undefined, b: 0, c: 0 }, hex.encode(new Uint8Array([128, 0]))]],
       errHex: [new Uint8Array([0, 0])],
     });
   });
@@ -184,32 +242,32 @@ describe('structures', () => {
   describe('padding', () => {
     test('left', {
       p: P.padLeft(3, P.U8),
-      correct: [[97, new Uint8Array([0, 0, 97])]],
+      correct: [[97, '000061']],
     });
     test('right', {
       // TODO: this is actually pretty complex:
       // without terminator, it will encode all zeros as is
       p: P.padRight(3, P.cstring),
       correct: [
-        ['a', new Uint8Array([97, 0, 0])],
-        ['aa', new Uint8Array([97, 97, 0])],
-        ['aaa', new Uint8Array([97, 97, 97, 0, 0, 0])],
-        ['aaaa', new Uint8Array([97, 97, 97, 97, 0, 0])],
-        ['aaaaa', new Uint8Array([97, 97, 97, 97, 97, 0])],
-        ['aaaaaa', new Uint8Array([97, 97, 97, 97, 97, 97, 0, 0, 0])],
+        ['a', '610000'],
+        ['aa', '616100'],
+        ['aaa', '616161000000'],
+        ['aaaa', '616161610000'],
+        ['aaaaa', '616161616100'],
+        ['aaaaaa', '616161616161000000'],
       ],
     });
   });
   test('tuple', {
     p: P.tuple([P.U8, P.U16LE, P.string(P.U8)]),
-    //                                                          a      b cLen  h     e    l    l    o
-    correct: [[[31, 12345, 'hello'], new Uint8Array([31, 57, 48, 5, 104, 101, 108, 108, 111])]],
+    //                                                                        a      b cLen  h     e    l    l    o
+    correct: [
+      [[31, 12345, 'hello'], hex.encode(new Uint8Array([31, 57, 48, 5, 104, 101, 108, 108, 111]))],
+    ],
   });
   test('struct', {
     p: P.struct({ a: P.U8, b: P.U16LE, c: P.string(P.U8) }),
-    correct: [
-      [{ a: 31, b: 12345, c: 'hello' }, new Uint8Array([31, 57, 48, 5, 104, 101, 108, 108, 111])],
-    ],
+    correct: [[{ a: 31, b: 12345, c: 'hello' }, '1f39300568656c6c6f']],
   });
 
   should('prefix', () => {
@@ -335,6 +393,8 @@ describe('structures', () => {
       throws(() => a.encode([0, 1, 2]));
       // Different separator, so we can encode zero
       const a2 = P.array(new Uint8Array([1, 2, 3]), P.U16LE);
+
+      console.log('OLOLO', a2.encode([0, 1, 2]));
       deepStrictEqual(a2.decode(a2.encode([0, 1, 2])), [0, 1, 2]);
       deepStrictEqual(a2.encode([0, 1, 2]), new Uint8Array([0, 0, 1, 0, 2, 0, 1, 2, 3]));
       // corrupted terminator
@@ -421,7 +481,413 @@ describe('structures', () => {
     // Early terminator
     throws(() => P.cstring.decode(new Uint8Array([116, 101, 0, 115, 116])));
   });
-
+  should('pathStack', () => {
+    const log = [];
+    // JSON as quick cloneDeep
+    const addLog = (rw, name) =>
+      log.push(
+        JSON.stringify({
+          name,
+          path: rw.stack.map((i) => i.obj),
+          fieldPath: rw.stack.map((i) => i.field).filter((i) => !!i),
+        })
+      );
+    const capture = (inner) =>
+      P.wrap({
+        encodeStream: (w, value) => {
+          addLog(w, 'before_encode');
+          inner.encodeStream(w, value);
+          addLog(w, 'after_encode');
+        },
+        decodeStream: (r) => {
+          addLog(r, 'before_decode');
+          const res = inner.decodeStream(r);
+          addLog(r, 'after_decode');
+          return res;
+        },
+      });
+    const t = P.struct({
+      data: capture(P.array(capture(P.U16BE), capture(P.U8))),
+      customField: capture(P.cstring),
+      deep: capture(
+        P.struct({
+          test: capture(P.cstring),
+          test2: capture(P.U32BE),
+        })
+      ),
+    });
+    const data = {
+      data: [1, 2, 3, 4, 5],
+      customField: 'test',
+      deep: { test: 'tmp', test2: 12354 },
+    };
+    deepStrictEqual(t.decode(t.encode(data)), data);
+    deepStrictEqual(
+      log.map((i) => JSON.parse(i)),
+      [
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+          ],
+          fieldPath: ['data'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '0'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '0'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '1'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '1'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '2'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '2'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '3'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '3'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '4'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            [1, 2, 3, 4, 5],
+          ],
+          fieldPath: ['data', '4'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+          ],
+          fieldPath: ['data'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+          ],
+          fieldPath: ['customField'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+          ],
+          fieldPath: ['customField'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+          ],
+          fieldPath: ['deep'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            { test: 'tmp', test2: 12354 },
+          ],
+          fieldPath: ['deep', 'test'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            { test: 'tmp', test2: 12354 },
+          ],
+          fieldPath: ['deep', 'test'],
+        },
+        {
+          name: 'before_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            { test: 'tmp', test2: 12354 },
+          ],
+          fieldPath: ['deep', 'test2'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+            { test: 'tmp', test2: 12354 },
+          ],
+          fieldPath: ['deep', 'test2'],
+        },
+        {
+          name: 'after_encode',
+          path: [
+            {
+              data: [1, 2, 3, 4, 5],
+              customField: 'test',
+              deep: { test: 'tmp', test2: 12354 },
+            },
+          ],
+          fieldPath: ['deep'],
+        },
+        { name: 'before_decode', path: [{}], fieldPath: ['data'] },
+        {
+          name: 'before_decode',
+          path: [{}, []],
+          fieldPath: ['data', 'arrayLen'],
+        },
+        {
+          name: 'after_decode',
+          path: [{}, []],
+          fieldPath: ['data', 'arrayLen'],
+        },
+        {
+          name: 'before_decode',
+          path: [{}, []],
+          fieldPath: ['data', '0'],
+        },
+        {
+          name: 'after_decode',
+          path: [{}, []],
+          fieldPath: ['data', '0'],
+        },
+        {
+          name: 'before_decode',
+          path: [{}, [1]],
+          fieldPath: ['data', '1'],
+        },
+        {
+          name: 'after_decode',
+          path: [{}, [1]],
+          fieldPath: ['data', '1'],
+        },
+        {
+          name: 'before_decode',
+          path: [{}, [1, 2]],
+          fieldPath: ['data', '2'],
+        },
+        {
+          name: 'after_decode',
+          path: [{}, [1, 2]],
+          fieldPath: ['data', '2'],
+        },
+        {
+          name: 'before_decode',
+          path: [{}, [1, 2, 3]],
+          fieldPath: ['data', '3'],
+        },
+        {
+          name: 'after_decode',
+          path: [{}, [1, 2, 3]],
+          fieldPath: ['data', '3'],
+        },
+        {
+          name: 'before_decode',
+          path: [{}, [1, 2, 3, 4]],
+          fieldPath: ['data', '4'],
+        },
+        {
+          name: 'after_decode',
+          path: [{}, [1, 2, 3, 4]],
+          fieldPath: ['data', '4'],
+        },
+        { name: 'after_decode', path: [{}], fieldPath: ['data'] },
+        {
+          name: 'before_decode',
+          path: [{ data: [1, 2, 3, 4, 5] }],
+          fieldPath: ['customField'],
+        },
+        {
+          name: 'after_decode',
+          path: [{ data: [1, 2, 3, 4, 5] }],
+          fieldPath: ['customField'],
+        },
+        {
+          name: 'before_decode',
+          path: [{ data: [1, 2, 3, 4, 5], customField: 'test' }],
+          fieldPath: ['deep'],
+        },
+        {
+          name: 'before_decode',
+          path: [{ data: [1, 2, 3, 4, 5], customField: 'test' }, {}],
+          fieldPath: ['deep', 'test'],
+        },
+        {
+          name: 'after_decode',
+          path: [{ data: [1, 2, 3, 4, 5], customField: 'test' }, {}],
+          fieldPath: ['deep', 'test'],
+        },
+        {
+          name: 'before_decode',
+          path: [{ data: [1, 2, 3, 4, 5], customField: 'test' }, { test: 'tmp' }],
+          fieldPath: ['deep', 'test2'],
+        },
+        {
+          name: 'after_decode',
+          path: [{ data: [1, 2, 3, 4, 5], customField: 'test' }, { test: 'tmp' }],
+          fieldPath: ['deep', 'test2'],
+        },
+        {
+          name: 'after_decode',
+          path: [{ data: [1, 2, 3, 4, 5], customField: 'test' }],
+          fieldPath: ['deep'],
+        },
+      ]
+    );
+  });
   describe('control flow', () => {
     should('struct path', () => {
       let s1 = P.struct({
@@ -502,31 +968,68 @@ describe('structures', () => {
     describe('pointer', () => {
       test('basic', {
         p: P.pointer(P.U8, P.U8),
-        correct: [[123, new Uint8Array([1, 123])]],
+        correct: [[123, hex.encode(new Uint8Array([1, 123]))]],
       });
       test('two', {
         p: P.pointer(P.U8, P.pointer(P.U8, P.U8)),
         // Since pointers are nested, it should be same pointer
-        correct: [[123, new Uint8Array([1, 1, 123])]],
+        correct: [[123, hex.encode(new Uint8Array([1, 1, 123]))]],
       });
       test('three', {
         p: P.pointer(P.U8, P.pointer(P.U8, P.pointer(P.U8, P.U8))),
         // Since pointers are nested, it should be same pointer
-        correct: [[123, new Uint8Array([1, 1, 1, 123])]],
+        correct: [[123, hex.encode(new Uint8Array([1, 1, 1, 123]))]],
       });
       test('array', {
         p: P.array(P.U8, P.pointer(P.U16BE, P.U8)),
         correct: [
-          [[1, 2, 3, 4, 5], new Uint8Array([5, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15, 1, 2, 3, 4, 5])],
-          [[3, 4], new Uint8Array([2, 0, 5, 0, 6, 3, 4])],
+          [
+            [1, 2, 3, 4, 5],
+            hex.encode(new Uint8Array([5, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15, 1, 2, 3, 4, 5])),
+          ],
+          [[3, 4], hex.encode(new Uint8Array([2, 0, 5, 0, 6, 3, 4]))],
         ],
       });
       test('array/two', {
         p: P.array(P.U8, P.pointer(P.U8, P.pointer(P.U8, P.U8))),
         correct: [
-          // TODO: this looks broken
-          [[3, 4], new Uint8Array([2, 3, 5, 1, 3, 1, 4])],
-          [[1, 2, 3, 4, 5], new Uint8Array([5, 6, 8, 10, 12, 14, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5])],
+          [
+            [3, 4],
+            hex.encode(
+              new Uint8Array([
+                2, // 0: len
+                3, // 1: ptr[0]
+                5, // 2: ptr[1]
+                1, // 3: ptr[0][0] (ptr[0] jumps here)
+                3, // 4: value (ptr[0][0] jumps here)
+                1, // 5: ptr[1][0] (ptr[1] jumps here)
+                4, // 6: value (ptr[1][0] jumps here)
+              ])
+            ),
+          ],
+          [
+            [1, 2, 3, 4, 5],
+            hex.encode(
+              new Uint8Array([
+                5, //  0: len
+                6, //  1: ptr[0]
+                8, //  2: ptr[1]
+                10, // 3: ptr[2]
+                12, // 4: ptr[3]
+                14, // 5: ptr[4]
+                1, //  6: ptr[0][0] (ptr[0] jumps here)
+                1, //  7: value (ptr[0][0] jumps here)
+                1, //  8: ptr[1][0] (ptr[1] jumps here)
+                2, //  9: value (ptr[1][0] jumps here)
+                1, // 10: ptr[2][0] (ptr[2] jumps here)
+                3, // 11: value (ptr[2][0] jumps here)
+                1, // 12: ptr[3][0] (ptr[3] jumps here)
+                4, // 13: value (ptr[3][0] jumps here)
+                1, // 14: ptr[4][0] (ptr[4] jumps here)
+                5, // 15: value (ptr[4][0] jumps here)
+              ])
+            ),
+          ],
         ],
       });
     });
@@ -559,18 +1062,18 @@ describe('structures', () => {
       // Allows creating circular structures
       const tree = P.struct({
         name: P.cstring,
-        childs: P.array(
+        children: P.array(
           P.U16BE,
           P.lazy(() => tree)
         ),
       });
       const CASES = [
-        { name: 'a', childs: [] },
+        { name: 'a', children: [] },
         {
           name: 'root',
-          childs: [
-            { name: 'a', childs: [] },
-            { name: 'b', childs: [{ name: 'c', childs: [{ name: 'd', childs: [] }] }] },
+          children: [
+            { name: 'a', children: [] },
+            { name: 'b', children: [{ name: 'c', children: [{ name: 'd', children: [] }] }] },
           ],
         },
       ];
@@ -588,14 +1091,14 @@ describe('structures', () => {
       throws(() => c.decode(new Uint8Array([101])));
     });
     should('debug', () => {
-      const s = P.debug(
+      const s = PD.debug(
         P.struct({
-          name: P.debug(P.cstring),
-          num: P.debug(P.U32LE),
-          child: P.debug(
+          name: PD.debug(P.cstring),
+          num: PD.debug(P.U32LE),
+          child: PD.debug(
             P.struct({
-              a: P.debug(P.bool),
-              b: P.debug(P.U256BE),
+              a: PD.debug(P.bool),
+              b: PD.debug(P.U256BE),
             })
           ),
         })
@@ -606,6 +1109,12 @@ describe('structures', () => {
         child: { a: true, b: 123n },
       };
       deepStrictEqual(s.decode(s.encode(data)), data);
+    });
+    should('isPlainObject', () => {
+      deepStrictEqual(P.utils.isPlainObject({}), true);
+      deepStrictEqual(P.utils.isPlainObject(null), false);
+      deepStrictEqual(P.utils.isPlainObject([]), false);
+      deepStrictEqual(P.utils.isPlainObject(new Uint8Array([])), false);
     });
   });
 });
@@ -649,7 +1158,7 @@ describe('coders', () => {
       '-99999999',
     ];
     for (let c of cases) deepStrictEqual(d8.encode(d8.decode(c)), c);
-    const d2 = P.coders.decimal(2);
+    const d2 = P.coders.decimal(2, true);
     // Round number if precision is smaller than fraction part length
     deepStrictEqual(d2.decode('22.11111111111111111'), 2211n);
     deepStrictEqual(d2.decode('222222.11111111111111111'), 22222211n);
@@ -660,9 +1169,82 @@ describe('coders', () => {
       d2.encode(d2.decode('222222222222222222222222222.9999')),
       '222222222222222222222222222.99'
     );
-    const u64 = P.apply(P.U64BE, P.coders.decimal(18));
-    deepStrictEqual(u64.decode(u64.encode('10.1')), '10.1');
-    deepStrictEqual(u64.decode(u64.encode('1.1234567')), '1.1234567');
+    const i64 = P.apply(P.I64BE, P.coders.decimal(9));
+    const ok = [
+      '1',
+      '10',
+      '100',
+      '0.1',
+      '0.01', // leading zero in frac
+      '10.2',
+      '100.001',
+      '1.1234567',
+      '0.0000001',
+      '1.9999999',
+      '1000000000.000000001',
+    ];
+    for (const t of ok) deepStrictEqual(i64.decode(i64.encode(t)), t);
+    for (const t of ok) deepStrictEqual(i64.decode(i64.encode(`-${t}`)), `-${t}`);
+    deepStrictEqual(i64.decode(i64.encode('0.0')), '0');
+    deepStrictEqual(i64.decode(i64.encode('0')), '0');
+    deepStrictEqual(i64.decode(i64.encode('10.0')), '10');
+    deepStrictEqual(i64.decode(i64.encode('1.0')), '1');
+    // Input can be from user, so this is ok, but '-0' is not.
+    deepStrictEqual(i64.decode(i64.encode('1000000000.000000000')), '1000000000');
+    deepStrictEqual(i64.decode(i64.encode('1000000000.0000000000')), '1000000000');
+    deepStrictEqual(
+      i64.decode(i64.encode('1000000000.0000000000000000000000000000')),
+      '1000000000'
+    );
+    const fail = [
+      true,
+      1,
+      1n,
+      [],
+      new Uint8Array([]),
+      {},
+      null,
+      undefined,
+      '01',
+      '001',
+      ' 010',
+      '1.',
+      '100.',
+      '00001',
+      '0001.0',
+      '1.1.1',
+      '100.0.0.1',
+      '',
+      '.',
+      ' . ',
+      ' 1',
+      '1 ',
+      ' 1.1 ',
+      '1a',
+      '1e10',
+      '$100',
+      '100%',
+      '1e2',
+      '1E2',
+      '10²',
+      '５',
+      '1000000000.0000000001',
+      'NaN',
+      'Infinity',
+      '-Infinity',
+      '-0',
+    ];
+    for (const t of fail) throws(() => i64.encode(t), `${t}`);
+    const d5 = P.coders.decimal(5);
+    deepStrictEqual(d5.encode(123n), '0.00123');
+    deepStrictEqual(d5.encode(-123n), '-0.00123');
+    const d0 = P.coders.decimal(0);
+    throws(() => P.coders.decimal(-1));
+    deepStrictEqual(d0.encode(123n), '123');
+    deepStrictEqual(d0.encode(-123n), '-123');
+    deepStrictEqual(d0.decode('123.0'), 123n);
+    throws(() => d0.decode('123.1'));
+    throws(() => d0.decode('1.1'));
   });
 
   should('match', () => {
@@ -751,34 +1333,31 @@ describe('utils', () => {
   describe('Reader', () => {
     describe('bits', () => {
       should('basic', () => {
-        const u = new P.Reader(new Uint8Array([152, 0]));
+        const u = new Reader(new Uint8Array([152, 0]));
         deepStrictEqual([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 0, 6, 0]);
         deepStrictEqual(u.byte(), 0);
         deepStrictEqual(u.isEnd(), true);
       });
 
       should('u32', () => {
-        deepStrictEqual(
-          new P.Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff])).bits(32),
-          2 ** 32 - 1
-        );
+        deepStrictEqual(new Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff])).bits(32), 2 ** 32 - 1);
       });
 
       should('full mask', () => {
-        const u = new P.Reader(new Uint8Array([0xff]));
+        const u = new Reader(new Uint8Array([0xff]));
         deepStrictEqual([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 1, 15, 3]);
         deepStrictEqual(u.isEnd(), true);
       });
 
       should('u32 mask', () => {
-        const u = new P.Reader(new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010, 0]));
+        const u = new Reader(new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010, 0]));
         for (let i = 0; i < 32; i++) deepStrictEqual(u.bits(1), +!(i & 1));
         deepStrictEqual(u.byte(), 0);
         deepStrictEqual(u.isEnd(), true);
       });
 
       should('throw on non-full (1 byte)', () => {
-        const r = new P.Reader(new Uint8Array([0xff, 0]));
+        const r = new Reader(new Uint8Array([0xff, 0]));
         r.bits(7);
         throws(() => r.byte());
         throws(() => r.bytes(1));
@@ -790,7 +1369,7 @@ describe('utils', () => {
       });
 
       should('throw on non-full (4 byte)', () => {
-        const r = new P.Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0]));
+        const r = new Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0]));
         r.bits(31);
         throws(() => r.byte());
         throws(() => r.bytes(1));
@@ -802,14 +1381,14 @@ describe('utils', () => {
       });
 
       should('empty array', () => {
-        throws(() => new P.Reader(new Uint8Array([])).bits(1), '1');
-        throws(() => new P.Reader(new Uint8Array([])).bits(8), '8');
-        throws(() => new P.Reader(new Uint8Array([])).bits(32), '32');
+        throws(() => new Reader(new Uint8Array([])).bits(1), '1');
+        throws(() => new Reader(new Uint8Array([])).bits(8), '8');
+        throws(() => new Reader(new Uint8Array([])).bits(32), '32');
       });
     });
 
     should('find', () => {
-      const r = new P.Reader(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0]));
+      const r = new Reader(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0]));
       // Basic
       deepStrictEqual(r.find(new Uint8Array([0xfa])), 0);
       deepStrictEqual(r.find(new Uint8Array([0xfb])), 1);
@@ -829,7 +1408,7 @@ describe('utils', () => {
       throws(() => r.find(new Uint8Array()));
       // Non-bytes needle
       throws(() => r.find([]));
-      const r2 = new P.Reader(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0, 0xfa, 0xfb, 0xfc, 0xfd]));
+      const r2 = new Reader(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0, 0xfa, 0xfb, 0xfc, 0xfd]));
       deepStrictEqual(r.find(new Uint8Array([0xfb, 0xfc])), 1);
       // Second element
       deepStrictEqual(r.find(new Uint8Array([0xfb, 0xfc]), 2), undefined);
@@ -839,65 +1418,65 @@ describe('utils', () => {
 
   describe('Writer', () => {
     should('bits: basic', () => {
-      let w = new P.Writer();
+      let w = new Writer();
       w.bits(1, 1);
       w.bits(0, 1);
       w.bits(6, 4);
       w.bits(0, 2);
-      deepStrictEqual(w.buffer, new Uint8Array([152]));
+      deepStrictEqual(w.finish(), new Uint8Array([152]));
     });
 
     should('bits: full mask', () => {
-      let w = new P.Writer();
+      let w = new Writer();
       w.bits(1, 1);
       w.bits(1, 1);
       w.bits(15, 4);
       w.bits(3, 2);
-      deepStrictEqual(w.buffer, new Uint8Array([0xff]));
+      deepStrictEqual(w.finish(), new Uint8Array([0xff]));
     });
 
     should('bits: u32 single', () => {
-      let w = new P.Writer();
+      let w = new Writer();
       w.bits(2 ** 32 - 1, 32);
-      deepStrictEqual(w.buffer, new Uint8Array([0xff, 0xff, 0xff, 0xff]));
+      deepStrictEqual(w.finish(), new Uint8Array([0xff, 0xff, 0xff, 0xff]));
     });
 
     should('bits: u32 partial', () => {
-      let w = new P.Writer();
+      let w = new Writer();
       w.bits(0xff, 8);
       for (let i = 0; i < 8; i++) w.bits(1, 1);
       w.bits(0xffff, 16);
-      deepStrictEqual(w.buffer, new Uint8Array([0xff, 0xff, 0xff, 0xff]));
+      deepStrictEqual(w.finish(), new Uint8Array([0xff, 0xff, 0xff, 0xff]));
     });
 
     should('bits: u32 mask', () => {
-      let w = new P.Writer();
+      let w = new Writer();
       for (let i = 0; i < 32; i++) w.bits(+!(i & 1), 1);
-      deepStrictEqual(w.buffer, new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010]));
+      deepStrictEqual(w.finish(), new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010]));
     });
 
     should('bits: throw on non-full (1 byte)', () => {
-      let w = new P.Writer();
+      let w = new Writer();
       w.bits(0, 7);
-      throws(() => w.buffer);
+      throws(() => w.finish());
       throws(() => w.byte(1));
       throws(() => w.bytes(new Uint8Array([2, 3])));
       w.bits(0, 1);
       w.byte(1);
       w.bytes(new Uint8Array([2, 3]));
-      deepStrictEqual(w.buffer, new Uint8Array([0, 1, 2, 3]));
+      deepStrictEqual(w.finish(), new Uint8Array([0, 1, 2, 3]));
     });
 
     should('bits: throw on non-full (4 byte)', () => {
-      let w = new P.Writer();
+      let w = new Writer();
       w.bits(0, 31);
-      throws(() => w.buffer);
+      throws(() => w.finish());
       throws(() => w.byte(1));
       throws(() => w.bytes(new Uint8Array([2, 3])));
       w.bits(0, 1);
       w.byte(1);
       w.bytes(new Uint8Array([2, 3]));
-      deepStrictEqual(w.buffer, new Uint8Array([0, 0, 0, 0, 1, 2, 3]));
+      deepStrictEqual(w.finish(), new Uint8Array([0, 0, 0, 0, 1, 2, 3]));
     });
   });
   describe('BitSet', () => {
