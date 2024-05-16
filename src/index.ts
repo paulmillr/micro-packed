@@ -1,5 +1,17 @@
-import { base64, hex as baseHex, utf8 } from '@scure/base';
 import type { Coder as BaseCoder } from '@scure/base';
+import { hex as baseHex, utf8 } from '@scure/base';
+
+// copied from scure-base
+// export interface BCoder<F, T> {
+//   encode(from: F): T;
+//   decode(to: T): F;
+// }
+// declare const TextEncoder: any;
+// declare const TextDecoder: any;
+// const utf8: BytesCoder<string> = {
+//   encode: (data) => new TextDecoder().decode(data),
+//   decode: (str) => new TextEncoder().encode(str),
+// };
 
 /**
  * Define complex binary structures using composable primitives.
@@ -24,11 +36,11 @@ import type { Coder as BaseCoder } from '@scure/base';
  */
 
 /**
- * Zero-length empty byte array.
+ * Shortcut to zero-length (empty) byte array
  */
 export const EMPTY = /* @__PURE__ */ new Uint8Array();
 /**
- * NULL byte array.
+ * Shortcut to one-element (element is 0) byte array
  */
 export const NULL = /* @__PURE__ */ new Uint8Array([0]);
 
@@ -88,7 +100,15 @@ function isNum(num: unknown): num is number {
   return Number.isSafeInteger(num);
 }
 
-export const utils = { equalBytes, isBytes, isCoder, concatBytes, createView, isPlainObject };
+export const utils = {
+  equalBytes,
+  isBytes,
+  isCoder,
+  checkBounds,
+  concatBytes,
+  createView,
+  isPlainObject,
+};
 
 // Types
 export type Bytes = Uint8Array;
@@ -707,7 +727,7 @@ const swapEndianness = (b: Bytes): Bytes => Uint8Array.from(b).reverse();
 /**
  * Internal function for checking bit bounds of bigint in signed/unsinged form
  */
-export function checkBounds(value: bigint, bits: bigint, signed: boolean) {
+function checkBounds(value: bigint, bits: bigint, signed: boolean) {
   if (signed) {
     // [-(2**(32-1)), 2**(32-1)-1]
     const signBit = 2n ** (bits - 1n);
@@ -780,14 +800,13 @@ export function validate<T>(inner: CoderType<T>, fn: Validate<T>): CoderType<T> 
 
 /**
  * Wraps a stream encoder into a generic encoder and optionally validation function
- * @param inner - The inner BytesCoderStream & { validate?: Validate<T> }.
+ * @param {inner} inner BytesCoderStream & { validate?: Validate<T> }.
  * @returns The wrapped CoderType.
  * @example
  * const U8 = P.wrap({
  *   encodeStream: (w: Writer, value: number) => w.byte(value),
  *   decodeStream: (r: Reader): number => r.byte()
  * });
- *  * @example
  * const checkedU8 = P.wrap({
  *   encodeStream: (w: Writer, value: number) => w.byte(value),
  *   decodeStream: (r: Reader): number => r.byte()
@@ -858,7 +877,7 @@ function dict<T>(): BaseCoder<[string, T][], Record<string, T>> {
  * Sometimes pointers / tags use u64 or other big numbers which cannot be represented by number,
  * but we still can use them since real value will be smaller than u32
  */
-const number: BaseCoder<bigint, number> = {
+const numberBigint: BaseCoder<bigint, number> = {
   encode: (from: bigint): number => {
     if (typeof from !== 'bigint') throw new Error(`expected bigint, got ${typeof from}`);
     if (from > BigInt(Number.MAX_SAFE_INTEGER))
@@ -1005,7 +1024,7 @@ const reverse = <F, T>(coder: Coder<F, T>): Coder<T, F> => {
   return { encode: coder.decode, decode: coder.encode };
 };
 
-export const coders = { dict, number, tsEnum, decimal, match, reverse };
+export const coders = { dict, numberBigint, tsEnum, decimal, match, reverse };
 
 /**
  * CoderType for parsing individual bits.
@@ -1043,7 +1062,7 @@ export const bits = (len: number): CoderType<number> => {
  * @param sized - Whether the bigint should have a fixed size.
  * @returns CoderType representing the bigint value.
  * @example
- * const uint64BE = P.bigint(8, false, true); // Define a CoderType for a 64-bit unsigned big-endian integer
+ * const U512BE = P.bigint(64, false, true, true); // Define a CoderType for a 512-bit unsigned big-endian integer
  */
 export const bigint = (
   size: number,
@@ -1344,18 +1363,14 @@ export const bool: CoderType<boolean> = /* @__PURE__ */ wrap({
  * - Fixed size (specified by a number)
  * - Unknown size (null, will parse until end of buffer)
  * - Zero-terminated (terminator can be any Uint8Array)
- * @param len - Length CoderType, number, Uint8Array (for terminator), or null.
+ * @param len - CoderType, number, Uint8Array (terminator) or null
  * @param le - Whether to use little-endian byte order.
  * @returns CoderType representing the bytes.
  * @example
  * // Dynamic size bytes (prefixed with P.U16BE number of bytes length)
  * const dynamicBytes = P.bytes(P.U16BE, false);
- *
- * @example
  * const fixedBytes = P.bytes(32, false); // Fixed size bytes
- * @example
  * const unknownBytes = P.bytes(null, false); // Unknown size bytes, will parse until end of buffer
- * @example
  * const zeroTerminatedBytes = P.bytes(new Uint8Array([0]), false); // Zero-terminated bytes
  */
 export const bytes = (len: Length, le = false): CoderType<Bytes> => {
@@ -1394,13 +1409,11 @@ export const bytes = (len: Length, le = false): CoderType<Bytes> => {
  * - Fixed size (specified by a number)
  * - Unknown size (null, will parse until end of buffer)
  * - Zero-terminated (terminator can be any Uint8Array)
- * @param len - Length CoderType, number, Uint8Array (for terminator), or null.
+ * @param len - Length CoderType (dynamic size), number (fixed size), Uint8Array (for terminator), or null (will parse until end of buffer)
  * @param inner - CoderType for the actual value to be prefix-encoded.
  * @returns CoderType representing the prefix-encoded value.
  * @example
  * const dynamicPrefix = P.prefix(P.U16BE, P.bytes(null)); // Dynamic size prefix (prefixed with P.U16BE number of bytes length)
- *
- * @example
  * const fixedPrefix = P.prefix(10, P.bytes(null)); // Fixed size prefix (always 10 bytes)
  */
 export function prefix<T>(len: Length, inner: CoderType<T>): CoderType<T> {
@@ -1410,19 +1423,20 @@ export function prefix<T>(len: Length, inner: CoderType<T>): CoderType<T> {
 
 /**
  * String CoderType with a specified length and endianness.
- * The string can have:
+ * The string can be:
  * - Dynamic size (prefixed with a length CoderType like U16BE)
  * - Fixed size (specified by a number)
  * - Unknown size (null, will parse until end of buffer)
  * - Zero-terminated (terminator can be any Uint8Array)
- * @param len - Length CoderType, number, Uint8Array (for terminator), or null.
+ * @param len - Length CoderType (dynamic size), number (fixed size), Uint8Array (for terminator), or null (will parse until end of buffer)
  * @param le - Whether to use little-endian byte order.
  * @returns CoderType representing the string.
  * @example
- *   const dynamicString = P.string(P.U16BE, false); // Dynamic size string (prefixed with P.U16BE number of string length)
- *   const fixedString = P.string(10, false); // Fixed size string
- *   const unknownString = P.string(null, false); // Unknown size string, will parse until end of buffer
- *   const nullTerminatedString = P.cstring;  * // NUL-terminated string
+ * const dynamicString = P.string(P.U16BE, false); // Dynamic size string (prefixed with P.U16BE number of string length)
+ * const fixedString = P.string(10, false); // Fixed size string
+ * const unknownString = P.string(null, false); // Unknown size string, will parse until end of buffer
+ * const nullTerminatedString = P.cstring; // NUL-terminated string
+ * const _cstring = P.string(new Uint8Array([0])); // Same thing
  */
 export const string = (len: Length, le = false): CoderType<string> =>
   validate(apply(bytes(len, le), utf8), (value) => {
@@ -1801,7 +1815,7 @@ export function tuple<
 
 /**
  * Array of items (inner type) with a specified length.
- * @param len - Length CoderType (dynamic size), number (fixed size), Uint8Array (terminator), or null (will parse until end of buffer)
+ * @param len - Length CoderType (dynamic size), number (fixed size), Uint8Array (for terminator), or null (will parse until end of buffer)
  * @param inner - CoderType for encoding/decoding each array item.
  * @returns CoderType representing the array.
  * @example
@@ -2164,66 +2178,6 @@ export function pointer<T>(
       return inner.decodeStream(r.offsetReader(ptrVal));
     },
   });
-}
-
-/**
- * Base64-armored values are commonly used in cryptographic applications, such as PGP and SSH.
- * @param name - The name of the armored value.
- * @param lineLen - Maximum line length for the armored value (e.g., 64 for GPG, 70 for SSH).
- * @param inner - Inner CoderType for the value.
- * @param checksum - Optional checksum function.
- * @returns Coder representing the base64-armored value.
- * @example
- * // Base64-armored value without checksum
- * const armoredValue = P.base64armor('EXAMPLE', 64, P.bytes(null));
- */
-export function base64armor<T>(
-  name: string,
-  lineLen: number,
-  inner: CoderType<T>,
-  checksum?: (data: Bytes) => Bytes
-): Coder<T, string> {
-  if (typeof name !== 'string' || name.length === 0)
-    throw new Error('name must be a non-empty string');
-  if (!isNum(lineLen) || lineLen <= 0) throw new Error('lineLen must be a positive integer');
-  if (!isCoder(inner)) throw new Error('inner must be a valid base coder');
-  if (checksum !== undefined && typeof checksum !== 'function')
-    throw new Error('checksum must be a function or undefined');
-  const markBegin = `-----BEGIN ${name.toUpperCase()}-----`;
-  const markEnd = `-----END ${name.toUpperCase()}-----`;
-  return {
-    encode(value: T) {
-      const data = inner.encode(value);
-      const encoded = base64.encode(data);
-      const lines = [];
-      for (let i = 0; i < encoded.length; i += lineLen) {
-        const s = encoded.slice(i, i + lineLen);
-        if (s.length) lines.push(`${encoded.slice(i, i + lineLen)}\n`);
-      }
-      let body = lines.join('');
-      if (checksum) body += `=${base64.encode(checksum(data))}\n`;
-      return `${markBegin}\n\n${body}${markEnd}\n`;
-    },
-    decode(s: string): T {
-      if (typeof s !== 'string') throw new Error('string expected');
-      const beginPos = s.indexOf(markBegin);
-      const endPos = s.indexOf(markEnd);
-      if (beginPos === -1 || endPos === -1 || beginPos >= endPos)
-        throw new Error('invalid armor format');
-      let lines = s.replace(markBegin, '').replace(markEnd, '').trim().split('\n');
-      if (lines.length === 0) throw new Error('no data found in armor');
-      lines = lines.map((l) => l.replace('\r', '').trim());
-      const last = lines.length - 1;
-      if (checksum && lines[last].startsWith('=')) {
-        const body = base64.decode(lines.slice(0, -1).join(''));
-        const cs = lines[last].slice(1);
-        const realCS = base64.encode(checksum(body));
-        if (realCS !== cs) throw new Error(`invalid checksum ${cs} instead of ${realCS}`);
-        return inner.decode(body);
-      }
-      return inner.decode(base64.decode(lines.join('')));
-    },
-  };
 }
 
 // Internal methods for test purposes only

@@ -291,7 +291,7 @@ export function diff(
  * const debugInt = P.debug(P.U32LE); // Will print info to console on encoding/decoding
  */
 export function debug<T>(inner: P.CoderType<T>): P.CoderType<T> {
-  if (!P.isCoder(inner)) throw new Error(`debug: invalid inner value ${inner}`);
+  if (!P.utils.isCoder(inner)) throw new Error(`debug: invalid inner value ${inner}`);
   const log = (name: string, rw: P.Reader | P.Writer, value: any) => {
     // @ts-ignore
     console.log(`DEBUG/${name}(${Path.path(rw.stack)}):`, { type: typeof value, value });

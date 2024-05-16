@@ -2,7 +2,7 @@
 
 > Less painful binary encoding / decoding
 
-Define complex binary structures using composable primitives. Comes with a friendly debugger.
+Define complex binary structures using composable primitives. Comes with a friendly [debugger](#debugger).
 
 Used in:
 
@@ -10,7 +10,7 @@ Used in:
 - [micro-ordinals](https://github.com/paulmillr/micro-ordinals) for ordinal parsing
 - [eth-signer](https://github.com/paulmillr/micro-eth-signer) for RLP and SSZ decoding. RLP pointers are protected against DoS
 - [sol-signer](https://github.com/paulmillr/micro-sol-signer) for parsing of keys, messages and other things
-- [ed25519-keygen](https://github.com/paulmillr/ed25519-keygen) for lightweight implementations of PGP and SSH
+- [ed25519-keygen](https://github.com/paulmillr/ed25519-keygen) for lightweight implementations of PGP and SSH, including base64armor
 - [micro-otp](https://github.com/paulmillr/micro-signer) just briefly
 
 ## Usage
@@ -34,198 +34,501 @@ const s = P.struct({
 });
 ```
 
-## Debugger
+- [Basics](#basics)
+  - [Interfaces](#interfaces)
+  - [Flexible size](#flexible-size)
+- [Primitives](#primitives)
+  - [P.bytes](#pbytes)
+  - [P.string](#pstring)
+  - [P.hex](#phex)
+  - [P.constant](#pconstant)
+  - [P.pointer](#ppointer)
+  - [Complex types](#complex-types)
+    - [P.array](#parray)
+    - [P.struct](#pstruct)
+    - [P.tuple](#ptuple)
+    - [P.map](#pmap)
+    - [P.tag](#ptag)
+    - [P.mappedTag](#pmappedtag)
+  - [Padding, prefix, magic](#padding-prefix-magic)
+    - [P.padLeft](#ppadleft)
+    - [P.padRight](#ppadright)
+    - [P.ZeroPad](#pzeropad)
+    - [P.prefix](#pprefix)
+    - [P.magic](#pmagic)
+    - [P.magicBytes](#pmagicbytes)
+  - [Flags](#flags)
+    - [P.flag](#pflag)
+    - [P.flagged](#pflagged)
+    - [P.optional](#poptional)
+  - [Wrappers](#wrappers)
+    - [P.apply](#papply)
+    - [P.wrap](#pwrap)
+    - [P.lazy](#plazy)
+  - [Bit fiddling](#bit-fiddling)
+    - [P.bits](#pbits)
+    - [P.bitset](#pbitset)
+  - [utils](#utils)
+    - [P.validate](#pvalidate)
+  - [Debugger](#debugger)
 
-```ts
-import * as PD from 'micro-packed/debugger';
+## Basics
 
-PD.decode(<coder>, data);
-PD.diff(<coder>, actual, expected);
+### Interfaces
+
+There are 3 main interfaces:
+
+- `Coder<F, T>` - a converter between types F and T
+- `BytesCoder<T>` - a Coder from type T to Bytes
+- `BytesCoderStream<T>` - streaming BytesCoder with Reader and Writer streams
+
+Coder and BytesCoder use `encode` / `decode` methods
+
+BytesCoderStream use `encodeStream` and `decodeStream`
+
+### Flexible size
+
+Many primitives accept length / size / len as their argument.
+It represents their size. There are four different types of size:
+
+- CoderType: Dynamic size (prefixed with a length CoderType like U16BE)
+- number: Fixed size (specified by a number)
+- terminator: Uint8Array (will parse until these bytes are matched)
+- null: (null, will parse until end of buffer)
+
+## Primitives
+
+### P.bytes
+
+Bytes CoderType with a specified length and endianness.
+
+| Param | Description                                                     |
+| ----- | --------------------------------------------------------------- |
+| len   | Length CoderType, number, Uint8Array (for terminator), or null. |
+| le    | Whether to use little-endian byte order.                        |
+
+```js
+// Dynamic size bytes (prefixed with P.U16BE number of bytes length)
+const dynamicBytes = P.bytes(P.U16BE, false);
+const fixedBytes = P.bytes(32, false); // Fixed size bytes
+const unknownBytes = P.bytes(null, false); // Unknown size bytes, will parse until end of buffer
+const zeroTerminatedBytes = P.bytes(new Uint8Array([0]), false); // Zero-terminated bytes
 ```
 
-![Decode](./test/screens/decode.png)
+Following shortcuts are also available:
 
-![Diff](./test/screens/diff.png)
+- `P.EMPTY`: Shortcut to zero-length (empty) byte array
+- `P.NULL`: Shortcut to one-element (element is 0) byte array
 
-## Utils
+### P.string
 
-- [Array](#array)
-- [Bytes](#bytes)
-- [String](#string)
-- [Tuple](#tuple)
-- [Map](#map)
-- [Tag](#tag)
-- [Magic](#magic)
-- [Bits](#bits)
-- [Pointer](#pointer)
-- [Padding](#padding)
-- [Flag](#flag)
-- [Flagged](#flagged)
-- [Optional](#optional)
-- [Lazy](#lazy)
-- [Dict](#dict)
-- [Validate](#validate)
-- [Debug](#debug)
-- [Primitive types](#primitive-types)
+String CoderType with a specified length and endianness.
 
-### Array
+| Param | Description                                        |
+| ----- | -------------------------------------------------- |
+| len   | CoderType, number, Uint8Array (terminator) or null |
+| le    | Whether to use little-endian byte order.           |
 
-Probably most powerful building block
-
-```ts
-import * as P from 'micro-packed';
-let a1 = P.array(P.U16BE, child); // Dynamic size array (prefixed with P.U16BE number of array length)
-let a2 = P.array(4, child); // Fixed size array
-let a3 = P.array(null, child); // Unknown size array, will parse until end of buffer
-let a4 = P.array(new Uint8Array([0]), child); // zero-terminated array (NOTE: terminator can be any buffer)
+```js
+const dynamicString = P.string(P.U16BE, false); // Dynamic size string (prefixed with P.U16BE number of string length)
+const fixedString = P.string(10, false); // Fixed size string
+const unknownString = P.string(null, false); // Unknown size string, will parse until end of buffer
+const nullTerminatedString = P.cstring; // NUL-terminated string
+const _cstring = P.string(new Uint8Array([0])); // Same thing
 ```
 
-### Bytes
+### P.hex
 
-Same as array of bytes, should be a bit faster than generic implementation, also returns Uint8Array,
-instead of array of ints
+Hexadecimal string CoderType with a specified length, endianness, and optional 0x prefix.
 
-```ts
-import * as P from 'micro-packed';
-// same as
-let bytes = (len) => P.array(len, P.U8);
-const b1 = bytes(P.U16BE);
-const b2 = bytes(P.U16BE, true); // bytes in little-endian order
+**Returns**: CoderType representing the hexadecimal string.
+
+| Param  | Description                                                                                                                 |
+| ------ | --------------------------------------------------------------------------------------------------------------------------- |
+| len    | Length CoderType (dynamic size), number (fixed size), Uint8Array (for terminator), or null (will parse until end of buffer) |
+| isLE   | Whether to use little-endian byte order.                                                                                    |
+| with0x | Whether to include the 0x prefix.                                                                                           |
+
+```js
+const dynamicHex = P.hex(P.U16BE, { isLE: false, with0x: true }); // Hex string with 0x prefix and U16BE length
+const fixedHex = P.hex(32, { isLE: false, with0x: false }); // Fixed-length 32-byte hex string without 0x prefix
 ```
 
-### String
+### P.constant
 
-Same as bytes, but returns utf8 decoded string
+Creates a CoderType for a constant value. The function enforces this value during encoding,
+ensuring it matches the provided constant. During decoding, it always returns the constant value.
+The actual value is not written to or read from any byte stream; it's used only for validation.
 
-```ts
-import * as P from 'micro-packed';
-const s = P.string(P.U16BE);
-s.decode(new Uint8Array([116, 101, 115, 116])); // -> test
-const s2 = P.cstring; // NUL-terminated strings
-s.decode(new Uint8Array([116, 101, 115, 116, 0])); // -> test
+**Returns**: CoderType representing the constant value.
+
+| Param | Description     |
+| ----- | --------------- |
+| c     | Constant value. |
+
+```js
+// Always return 123 on decode, throws on encoding anything other than 123
+const constantU8 = P.constant(123);
 ```
 
-### Tuple
+### P.pointer
 
-Same as struct, but without fields names
+Pointer to a value using a pointer CoderType and an inner CoderType.
+Pointers are scoped, and the next pointer in the dereference chain is offset by the previous one.
+By default (if no 'allowMultipleReads' in ReaderOpts is set) is safe, since
+same region of memory cannot be read multiple times.
 
-```ts
-import * as P from 'micro-packed';
+**Returns**: CoderType representing the pointer to the value.
 
-let s = P.tuple([P.U32BE, P.U8, P.bytes(32), ...])
+| Param | Description                                        |
+| ----- | -------------------------------------------------- |
+| ptr   | CoderType for the pointer value.                   |
+| inner | CoderType for encoding/decoding the pointed value. |
+| sized | Whether the pointer should have a fixed size.      |
+
+```js
+const pointerToU8 = P.pointer(P.U16BE, P.U8); // Pointer to a single U8 value
 ```
 
-### Map
+### Complex types
 
-Like enum in C (but without iota).
+#### P.array
 
-Allows to map encoded values to string
+Array of items (inner type) with a specified length.
 
-```ts
-import * as P from 'micro-packed';
-let s = P.map(P.U8, {
-  name1: 1,
-  name2: 2,
+| Param | Description                                                                                                             |
+| ----- | ----------------------------------------------------------------------------------------------------------------------- |
+| len   | Length CoderType (dynamic size), number (fixed size), Uint8Array (terminator), or null (will parse until end of buffer) |
+| inner | CoderType for encoding/decoding each array item.                                                                        |
+
+```js
+const a1 = P.array(P.U16BE, child); // Dynamic size array (prefixed with P.U16BE number of array length)
+const a2 = P.array(4, child); // Fixed size array
+const a3 = P.array(null, child); // Unknown size array, will parse until end of buffer
+const a4 = P.array(new Uint8Array([0]), child); // zero-terminated array (NOTE: terminator can be any buffer)
+```
+
+#### P.struct
+
+Structure of composable primitives (C/Rust struct)
+
+**Returns**: CoderType representing the structure.
+
+| Param  | Description                               |
+| ------ | ----------------------------------------- |
+| fields | Object mapping field names to CoderTypes. |
+
+```js
+// Define a structure with a 32-bit big-endian unsigned integer, a string, and a nested structure
+const myStruct = P.struct({
+  id: P.U32BE,
+  name: P.string(P.U8),
+  nested: P.struct({
+    flag: P.bool,
+    value: P.I16LE,
+  }),
 });
-s.decode(new Uint8Array([0x01])); // 'name1'
-s.decode(new Uint8Array([0x02])); // 'name2'
-s.decode(new Uint8Array([0x00])); // Error!
 ```
 
-### Tag
+#### P.tuple
 
-Like enum in Rust.
+Tuple (unnamed structure) of CoderTypes. Same as struct but with unnamed fields.
 
-Allows to choice stucture based on some value.
-Depending on value of first byte, it will be decoded as array, string or number.
+| Param  | Description          |
+| ------ | -------------------- |
+| fields | Array of CoderTypes. |
 
-```ts
-import * as P from 'micro-packed';
-
-let s = P.tag(P.U8, {
-  0x1: P.array(u16, ...),
-  0x2: P.string(u16, ...),
-  0x3: P.U32BE,
-})
+```js
+const myTuple = P.tuple([P.U8, P.U16LE, P.string(P.U8)]);
 ```
 
-### Magic
+#### P.map
 
-Encodes some constant value into bytes and checks if it is the same on decoding.
+Mapping between encoded values and string representations.
+
+**Returns**: CoderType representing the mapping.
+
+| Param    | Description                                              |
+| -------- | -------------------------------------------------------- |
+| inner    | CoderType for encoded values.                            |
+| variants | Object mapping string representations to encoded values. |
 
 ```ts
-import * as P from 'micro-packed';
+// Map between numbers and strings
+const numberMap = P.map(P.U8, {
+  one: 1,
+  two: 2,
+  three: 3,
+});
 
-let s = P.magic(U8, 123);
-s.encode(); // Uint8Array([123])
-s.decode(new Uint8Array([123])); // ok
-s.decode(new Uint8Array([124])); // error!
+// Map between byte arrays and strings
+const byteMap = P.map(P.bytes(2, false), {
+  ab: Uint8Array.from([0x61, 0x62]),
+  cd: Uint8Array.from([0x63, 0x64]),
+});
 ```
 
-### Bits
+#### P.tag
 
-Allows to parse bit-level elements:
+Tagged union of CoderTypes, where the tag value determines which CoderType to use.
+The decoded value will have the structure `{ TAG: number, data: ... }`.
 
-```ts
-import * as P from 'micro-packed';
-// NOTE: structure should parse whole amount of bytes before it can start parsing byte-level elements.
-let s = P.struct({ magic: P.bits(1), version: P.bits(1), tag: P.bits(4), len: P.bits(2) });
+| Param    | Description                              |
+| -------- | ---------------------------------------- |
+| tag      | CoderType for the tag value.             |
+| variants | Object mapping tag values to CoderTypes. |
+
+```js
+// Tagged union of array, string, and number
+// Depending on the value of the first byte, it will be decoded as an array, string, or number.
+const taggedUnion = P.tag(P.U8, {
+  0x01: P.array(P.U16LE, P.U8),
+  0x02: P.string(P.U8),
+  0x03: P.U32BE,
+});
+
+const encoded = taggedUnion.encode({ TAG: 0x01, data: 'hello' }); // Encodes the string 'hello' with tag 0x01
+const decoded = taggedUnion.decode(encoded); // Decodes the encoded value back to { TAG: 0x01, data: 'hello' }
 ```
 
-### Pointer
+#### P.mappedTag
 
-Encodes element as offset into real bytes
+Mapping between encoded values, string representations, and CoderTypes using a tag CoderType.
 
-```ts
-import * as P from 'micro-packed';
-const s = P.pointer(P.U8, P.U8);
-s.encode(123); // new Uint8Array([1, 123]), first byte is offset position of real value
+| Param    | Description                                                            |
+| -------- | ---------------------------------------------------------------------- |
+| tagCoder | CoderType for the tag value.                                           |
+| variants | Object mapping string representations to [tag value, CoderType] pairs. |
+
+```js
+const cborValue: P.CoderType<CborValue> = P.mappedTag(P.bits(3), {
+  uint: [0, cborUint], // An unsigned integer in the range 0..264-1 inclusive.
+  negint: [1, cborNegint], // A negative integer in the range -264..-1 inclusive
+  bytes: [2, P.lazy(() => cborLength(P.bytes, cborValue))], // A byte string.
+  string: [3, P.lazy(() => cborLength(P.string, cborValue))], // A text string (utf8)
+  array: [4, cborArrLength(P.lazy(() => cborValue))], // An array of data items
+  map: [5, P.lazy(() => cborArrLength(P.tuple([cborValue, cborValue])))], // A map of pairs of data items
+  tag: [6, P.tuple([cborUint, P.lazy(() => cborValue)] as const)], // A tagged data item ("tag") whose tag number
+  simple: [7, cborSimple], // Floating-point numbers and simple values, as well as the "break" stop code
+});
 ```
 
 ### Padding
 
-Allows to pad value with zero bytes. Optional argument allows to generate padding value based on position.
+#### P.padLeft
 
-```ts
-import * as P from 'micro-packed';
-P.padLeft(3, U8).encode(123); // Uint8Array([0, 0, 123])
-P.padRight(3, U8).encode(123); // Uint8Array([123, 0, 0])
+Pads a CoderType with a specified block size and padding function on the left side.
+
+**Returns**: CoderType representing the padded value.
+
+| Param     | Description                                                     |
+| --------- | --------------------------------------------------------------- |
+| blockSize | Block size for padding (positive safe integer).                 |
+| inner     | Inner CoderType to pad.                                         |
+| padFn     | Padding function to use. If not provided, zero padding is used. |
+
+```js
+// Pad a U32BE with a block size of 4 and zero padding
+const paddedU32BE = P.padLeft(4, P.U32BE);
+
+// Pad a string with a block size of 16 and custom padding
+const paddedString = P.padLeft(16, P.string(P.U8), (i) => i + 1);
 ```
 
-### Flag
+#### P.padRight
 
-Decodes as true if the value is the same.
+Pads a CoderType with a specified block size and padding function on the right side.
 
-```ts
-import * as P from 'micro-packed';
-const s = P.flag(new Uint8Array([1, 2, 3]));
+**Returns**: CoderType representing the padded value.
+
+| Param     | Description                                                     |
+| --------- | --------------------------------------------------------------- |
+| blockSize | Block size for padding (positive safe integer).                 |
+| inner     | Inner CoderType to pad.                                         |
+| padFn     | Padding function to use. If not provided, zero padding is used. |
+
+```js
+// Pad a U16BE with a block size of 2 and zero padding
+const paddedU16BE = P.padRight(2, P.U16BE);
+
+// Pad a bytes with a block size of 8 and custom padding
+const paddedBytes = P.padRight(8, P.bytes(null), (i) => i + 1);
 ```
 
-### Flagged
+#### P.ZeroPad
 
-Decodes / encodes struct only when flag/bool value (described as path in structure) is true (conditional encoding).
+Shortcut to zero-bytes padding
 
-```ts
-import * as P from 'micro-packed';
+### P.prefix
+
+Prefix-encoded value using a length prefix and an inner CoderType.
+
+**Returns**: CoderType representing the prefix-encoded value.
+
+| Param | Description                                                     |
+| ----- | --------------------------------------------------------------- |
+| len   | Length CoderType, number, Uint8Array (for terminator), or null. |
+| inner | CoderType for the actual value to be prefix-encoded.            |
+
+```js
+const dynamicPrefix = P.prefix(P.U16BE, P.bytes(null)); // Dynamic size prefix (prefixed with P.U16BE number of bytes length)
+const fixedPrefix = P.prefix(10, P.bytes(null)); // Fixed size prefix (always 10 bytes)
+```
+
+### P.magic
+
+Magic value CoderType that encodes/decodes a constant value.
+This can be used to check for a specific magic value or sequence of bytes at the beginning of a data structure.
+
+**Returns**: CoderType representing the magic value.
+
+| Param    | Description                                              |
+| -------- | -------------------------------------------------------- |
+| inner    | Inner CoderType for the value.                           |
+| constant | Constant value.                                          |
+| check    | Whether to check the decoded value against the constant. |
+
+```js
+// Always encodes constant as bytes using inner CoderType, throws if encoded value is not present
+const magicU8 = P.magic(P.U8, 0x42);
+```
+
+### P.magicBytes
+
+Magic bytes CoderType that encodes/decodes a constant byte array or string.
+
+**Returns**: CoderType representing the magic bytes.
+
+| Param    | Description                    |
+| -------- | ------------------------------ |
+| constant | Constant byte array or string. |
+
+```js
+// Always encodes undefined into byte representation of string 'MAGIC'
+const magicBytes = P.magicBytes('MAGIC');
+```
+
+### Flags
+
+#### P.flag
+
+Flag CoderType that encodes/decodes a boolean value based on the presence of a marker.
+
+**Returns**: CoderType representing the flag value.
+
+| Param     | Description                          |
+| --------- | ------------------------------------ |
+| flagValue | Marker value.                        |
+| xor       | Whether to invert the flag behavior. |
+
+```js
+const flag = P.flag(new Uint8Array([0x01, 0x02])); // Encodes true as u8a([0x01, 0x02]), false as u8a([])
+const flagXor = P.flag(new Uint8Array([0x01, 0x02]), true); // Encodes true as u8a([]), false as u8a([0x01, 0x02])
+// Conditional encoding with flagged
 const s = P.struct({ f: P.flag(new Uint8Array([0x0, 0x1])), f2: P.flagged('f', P.U32BE) });
 ```
 
-### Optional
+#### P.flagged
 
-Decodes/encodes value only if prefixed flag is true (or encodes default value).
+Conditional CoderType that encodes/decodes a value only if a flag is present.
 
-```ts
-import * as P from 'micro-packed';
-const s = P.optional(P.bool, P.U32BE, 123);
+**Returns**: CoderType representing the conditional value.
+
+| Param | Description                                               |
+| ----- | --------------------------------------------------------- |
+| path  | Path to the flag value or a CoderType for the flag.       |
+| inner | Inner CoderType for the value.                            |
+| def   | Optional default value to use if the flag is not present. |
+
+#### P.optional
+
+Optional CoderType that encodes/decodes a value based on a flag.
+
+**Returns**: CoderType representing the optional value.
+
+| Param | Description                                               |
+| ----- | --------------------------------------------------------- |
+| flag  | CoderType for the flag value.                             |
+| inner | Inner CoderType for the value.                            |
+| def   | Optional default value to use if the flag is not present. |
+
+```js
+// Will decode into P.U32BE only if flag present
+const optional = P.optional(P.flag(new Uint8Array([0x0, 0x1])), P.U32BE);
 ```
 
-### Lazy
+```js
+// If no flag present, will decode into default value
+const optionalWithDefault = P.optional(P.flag(new Uint8Array([0x0, 0x1])), P.U32BE, 123);
+```
 
-Allows definition of circular structures
+```js
+const s = P.struct({
+  f: P.flag(new Uint8Array([0x0, 0x1])),
+  f2: P.flagged('f', P.U32BE),
+});
+```
 
-```ts
-import * as P from 'micro-packed';
+```js
+const s2 = P.struct({
+  f: P.flag(new Uint8Array([0x0, 0x1])),
+  f2: P.flagged('f', P.U32BE, 123),
+});
+```
 
+### Wrappers
+
+#### P.apply
+
+Applies a base coder to a CoderType.
+
+**Returns**: CoderType representing the transformed value.
+
+| Param | Description              |
+| ----- | ------------------------ |
+| inner | The inner CoderType.     |
+| b     | The base coder to apply. |
+
+```js
+import { hex } from '@scure/base';
+const hex = P.apply(P.bytes(32), hex); // will decode bytes into a hex string
+```
+
+#### P.wrap
+
+Wraps a stream encoder into a generic encoder and optionally validation function
+
+| Param | Description                                    |
+| ----- | ---------------------------------------------- |
+| inner | BytesCoderStream & { validate?: Validate<T> }. |
+
+```js
+const U8 = P.wrap({
+  encodeStream: (w: Writer, value: number) => w.byte(value),
+  decodeStream: (r: Reader): number => r.byte()
+});
+
+const checkedU8 = P.wrap({
+  encodeStream: (w: Writer, value: number) => w.byte(value),
+  decodeStream: (r: Reader): number => r.byte()
+  validate: (n: number) => {
+   if (n > 10) throw new Error(`${n} > 10`);
+   return n;
+  }
+});
+```
+
+#### P.lazy
+
+Lazy CoderType that is evaluated at runtime.
+
+**Returns**: CoderType representing the lazy value.
+
+| Param | Description                            |
+| ----- | -------------------------------------- |
+| fn    | A function that returns the CoderType. |
+
+```js
 type Tree = { name: string; children: Tree[] };
 const tree = P.struct({
   name: P.cstring,
@@ -236,62 +539,133 @@ const tree = P.struct({
 });
 ```
 
-### Dict
+### Bit fiddling
 
-Converts array (key, value) tuples to dict/object/hashmap:
+Bit fiddling is implementing using primitive called Bitset: a small structure to store position of ranges that have been read.
+Can be more efficient when internal trees are utilized at the cost of complexity.
+Needs `O(N/8)` memory for parsing.
+Purpose: if there are pointers in parsed structure,
+they can cause read of two distinct ranges:
+[0-32, 64-128], which means 'pos' is not enough to handle them
 
-```ts
-import * as P from 'micro-packed';
+#### P.bits
 
-const dict: P.CoderType<Record<string, number>> = P.apply(
-  P.array(P.U16BE, P.tuple([P.cstring, P.U32LE] as const)),
-  P.coders.dict()
-);
+CoderType for parsing individual bits.
+NOTE: Structure should parse whole amount of bytes before it can start parsing byte-level elements.
+
+**Returns**: CoderType representing the parsed bits.
+
+| Param | Description              |
+| ----- | ------------------------ |
+| len   | Number of bits to parse. |
+
+```js
+const s = P.struct({ magic: P.bits(1), version: P.bits(1), tag: P.bits(4), len: P.bits(2) });
 ```
 
-### Validate
+#### P.bitset
 
-Validation of value before encoding and after decoding:
+Bitset of boolean values with optional padding.
 
-```ts
-import * as P from 'micro-packed';
+**Returns**: CoderType representing the bitset.
 
+| Param | Description                                        |
+| ----- | -------------------------------------------------- |
+| names | An array of string names for the bitset values.    |
+| pad   | Whether to pad the bitset to a multiple of 8 bits. |
+
+```js
+const myBitset = P.bitset(['flag1', 'flag2', 'flag3', 'flag4'], true);
+```
+
+### utils
+
+#### P.validate
+
+Validates a value before encoding and after decoding using a provided function.
+
+**Returns**: CoderType which check value with validation function.
+
+| Param | Description              |
+| ----- | ------------------------ |
+| inner | The inner CoderType.     |
+| fn    | The validation function. |
+
+```js
 const val = (n: number) => {
   if (n > 10) throw new Error(`${n} > 10`);
   return n;
 };
 
-const RangedInt = P.validate(P.U32LE, val); // will check in both encoding and decoding
+const RangedInt = P.validate(P.U32LE, val); // Will check if value is <= 10 during encoding and decoding
 ```
 
-### Debug
+### coders.dict
 
-Easy debug (via console.log), just wrap specific coder for it:
+Base coder for working with dictionaries (records, objects, key-value map)
+Dictionary is dynamic type like: `[key: string, value: any][]`
+
+**Returns**: base coder that encodes/decodes between arrays of key-value tuples and dictionaries.
+
+```js
+const dict: P.CoderType<Record<string, number>> = P.apply(
+ P.array(P.U16BE, P.tuple([P.cstring, P.U32LE] as const)),
+ P.coders.dict()
+);
+```
+
+### coders.decimal
+
+Base coder for working with decimal numbers.
+
+**Returns**: base coder that encodes/decodes between bigints and decimal strings.
+
+| Param     | Default            | Description                                                            |
+| --------- | ------------------ | ---------------------------------------------------------------------- |
+| precision |                    | Number of decimal places.                                              |
+| round     | <code>false</code> | Round fraction part if bigger than precision (throws error by default) |
+
+```js
+const decimal8 = P.coders.decimal(8);
+decimal8.encode(630880845n); // '6.30880845'
+decimal8.decode('6.30880845'); // 630880845n
+```
+
+### coders.match
+
+Combines multiple coders into a single coder, allowing conditional encoding/decoding based on input.
+Acts as a parser combinator, splitting complex conditional coders into smaller parts.
+
+`encode = [Ae, Be]; decode = [Ad, Bd]`
+->
+`match([{encode: Ae, decode: Ad}, {encode: Be; decode: Bd}])`
+
+**Returns**: Combined coder for conditional encoding/decoding.
+
+| Param | Description               |
+| ----- | ------------------------- |
+| lst   | Array of coders to match. |
+
+#### coders.reverse
+
+Reverses direction of coder
+
+### Debugger
+
+There is a second optional module for debugging into console.
 
 ```ts
 import * as P from 'micro-packed';
 import * as PD from 'micro-packed/debugger';
 
 const debugInt = PD.debug(P.U32LE); // Will print info to console
+// PD.decode(<coder>, data);
+// PD.diff(<coder>, actual, expected);
 ```
 
-### Primitive types
+![Decode](./test/screens/decode.png)
 
-Available types:
-
-- uint8, int8: unsigned and signed integers
-- uint16, uint32, uint64, uint128, uint256 and signed ones
-- float32, float64 for IEEE 754-2008 float
-
-```ts
-import * as P from 'micro-packed';
-// P.U8, P.I8,
-// P.U16BE, P.U32BE, P.U64BE, P.U128BE, P.U256BE,
-// P.U16LE, P.U32LE, P.U64LE, P.U128LE, P.U256LE,
-// P.I16BE, P.I32BE, P.I64BE, P.I128BE, P.I256BE,
-// P.I16LE, P.I32LE, P.I64LE, P.I128LE, P.I256LE,
-// P.F32BE, P.F64BE, P.F32LE, P.F64LE,
-```
+![Diff](./test/screens/diff.png)
 
 ## License
 
