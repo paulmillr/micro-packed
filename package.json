@@ -4,13 +4,13 @@
   "description": "Define complex binary structures using composable primitives",
   "files": [
     "lib/index.js",
-    "lib/debugger.js",
-    "lib/esm/index.js",
-    "lib/esm/debugger.js",
     "lib/index.d.ts",
-    "lib/debugger.d.ts",
     "lib/index.d.ts.map",
+    "lib/esm/index.js",
+    "lib/debugger.js",
+    "lib/debugger.d.ts",
     "lib/debugger.d.ts.map",
+    "lib/esm/debugger.js",
     "lib/esm/package.json",
     "src"
   ],

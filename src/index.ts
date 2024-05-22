@@ -67,6 +67,9 @@ function isBytes(a: unknown): a is Bytes {
 
 /**
  * Concatenates multiple Uint8Arrays.
+ * Engines limit functions to 65K+ arguments.
+ * @param arrays Array of Uint8Array elements
+ * @returns Concatenated Uint8Array
  */
 function concatBytes(...arrays: Uint8Array[]): Uint8Array {
   let sum = 0;
@@ -649,6 +652,9 @@ class _Reader implements Reader {
  */
 class _Writer implements Writer {
   pos: number = 0;
+  // We could have a single buffer here and re-alloc it with
+  // x1.5-2 size each time it full, but it will be slower:
+  // basic/encode bench: 395ns -> 560ns
   private buffers: Bytes[] = [];
   ptrs: { pos: number; ptr: CoderType<number>; buffer: Bytes }[] = [];
   private bitBuf = 0;
@@ -689,7 +695,16 @@ class _Writer implements Writer {
   finish(clean = true): Bytes {
     if (this.finished) throw this.err('buffer: finished');
     if (this.bitPos) throw this.err('buffer: ends with non-empty bit buffer');
-    const buf = concatBytes(...this.buffers, ...this.ptrs.map((i) => i.buffer));
+    // Can't use concatBytes, because it limits amount of arguments (65K).
+    const buffers = this.buffers.concat(this.ptrs.map((i) => i.buffer));
+    const sum = buffers.map((b) => b.length).reduce((a, b) => a + b, 0);
+    const buf = new Uint8Array(sum);
+    for (let i = 0, pad = 0; i < buffers.length; i++) {
+      const a = buffers[i];
+      buf.set(a, pad);
+      pad += a.length;
+    }
+
     for (let pos = this.pos, i = 0; i < this.ptrs.length; i++) {
       const ptr = this.ptrs[i];
       buf.set(ptr.ptr.encode(pos), ptr.pos);
