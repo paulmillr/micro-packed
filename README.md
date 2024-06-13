@@ -10,8 +10,7 @@ Used in:
 - [micro-ordinals](https://github.com/paulmillr/micro-ordinals) for ordinal parsing
 - [eth-signer](https://github.com/paulmillr/micro-eth-signer) for RLP and SSZ decoding. RLP pointers are protected against DoS
 - [sol-signer](https://github.com/paulmillr/micro-sol-signer) for parsing of keys, messages and other things
-- [ed25519-keygen](https://github.com/paulmillr/ed25519-keygen) for lightweight implementations of PGP and SSH, including base64armor
-- [micro-otp](https://github.com/paulmillr/micro-signer) just briefly
+- [key-producer](https://github.com/paulmillr/micro-key-producer) for lightweight implementations of PGP, SSH and OTP
 
 ## Usage
 
