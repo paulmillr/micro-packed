@@ -2,6 +2,9 @@
   "name": "micro-packed",
   "version": "0.6.3",
   "description": "Define complex binary structures using composable primitives",
+  "dependencies": {
+    "@scure/base": "~1.1.5"
+  },
   "files": [
     "lib/index.js",
     "lib/index.d.ts",
@@ -29,9 +32,7 @@
       "default": "./lib/debugger.js"
     }
   },
-  "dependencies": {
-    "@scure/base": "~1.1.5"
-  },
+  "sideEffects": false,
   "scripts": {
     "bench": "node benchmark/index.js noble",
     "bench:all": "node benchmark/index.js",
