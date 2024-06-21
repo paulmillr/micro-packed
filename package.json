@@ -52,9 +52,17 @@
     "@paulmillr/jsbt": "0.1.0",
     "micro-bmark": "0.3.1",
     "micro-should": "0.4.0",
-    "prettier": "3.1.1",
-    "typescript": "5.3.2"
+    "prettier": "3.3.2",
+    "typescript": "5.5.2"
   },
-  "keywords": ["encode", "encoder", "binary", "bytes", "struct", "tuple", "enum"],
+  "keywords": [
+    "encode",
+    "encoder",
+    "binary",
+    "bytes",
+    "struct",
+    "tuple",
+    "enum"
+  ],
   "funding": "https://paulmillr.com/funding/"
 }
