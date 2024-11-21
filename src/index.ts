@@ -60,8 +60,7 @@ function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
  */
 function isBytes(a: unknown): a is Bytes {
   return (
-    a instanceof Uint8Array ||
-    (a != null && typeof a === 'object' && a.constructor.name === 'Uint8Array')
+    a instanceof Uint8Array || (ArrayBuffer.isView(a) && a.constructor.name === 'Uint8Array')
   );
 }
 
@@ -2204,4 +2203,4 @@ export function pointer<T>(
 }
 
 // Internal methods for test purposes only
-export const _TEST = /* @__PURE__ */ { _bitset: Bitset, _Reader, _Writer, Path };
+export const _TEST = { _bitset: Bitset, _Reader, _Writer, Path };
