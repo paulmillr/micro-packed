@@ -59,9 +59,7 @@ function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
  * Checks if the given value is a Uint8Array.
  */
 function isBytes(a: unknown): a is Bytes {
-  return (
-    a instanceof Uint8Array || (ArrayBuffer.isView(a) && a.constructor.name === 'Uint8Array')
-  );
+  return a instanceof Uint8Array || (ArrayBuffer.isView(a) && a.constructor.name === 'Uint8Array');
 }
 
 /**
