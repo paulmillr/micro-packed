@@ -3,7 +3,7 @@
   "version": "0.6.3",
   "description": "Define complex binary structures using composable primitives",
   "dependencies": {
-    "@scure/base": "~1.1.5"
+    "@scure/base": "~1.2.0"
   },
   "files": [
     "lib/index.js",
@@ -22,14 +22,12 @@
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/index.d.ts",
       "import": "./lib/esm/index.js",
-      "default": "./lib/index.js"
+      "require": "./lib/index.js"
     },
     "./debugger": {
-      "types": "./lib/debugger.d.ts",
       "import": "./lib/esm/debugger.js",
-      "default": "./lib/debugger.js"
+      "require": "./lib/debugger.js"
     }
   },
   "sideEffects": false,
@@ -49,7 +47,7 @@
     "url": "git+https://github.com/paulmillr/micro-packed.git"
   },
   "devDependencies": {
-    "@paulmillr/jsbt": "0.1.0",
+    "@paulmillr/jsbt": "0.2.1",
     "fast-check": "3.0.0",
     "micro-bmark": "0.3.1",
     "micro-should": "0.4.0",
