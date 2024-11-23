@@ -1484,9 +1484,10 @@ const createHex = (
   options: HexOpts = { isLE: false, with0x: false }
 ): CoderType<string> => {
   let inner = apply(createBytes(len, options.isLE), baseHex);
-  if (typeof options.with0x !== 'boolean')
-    throw new Error(`hex/with0x: expected boolean, got ${typeof options.with0x}`);
-  if (options.with0x) {
+  const prefix = options.with0x;
+  if (typeof prefix !== 'boolean')
+    throw new Error(`hex/with0x: expected boolean, got ${typeof prefix}`);
+  if (prefix) {
     inner = apply(inner, {
       encode: (value) => `0x${value}`,
       decode: (value) => {

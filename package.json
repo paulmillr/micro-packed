@@ -3,7 +3,7 @@
   "version": "0.6.3",
   "description": "Define complex binary structures using composable primitives",
   "dependencies": {
-    "@scure/base": "~1.2.0"
+    "@scure/base": "~1.2.1"
   },
   "files": [
     "!lib/_type_test.js",
