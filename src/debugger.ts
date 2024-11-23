@@ -3,12 +3,16 @@ import * as P from './index.js';
 const Path = P._TEST.Path; // Very internal stuff, for debug only.
 
 const UNKNOWN = '(???)';
-const bold = '\x1b[1m';
-const gray = '\x1b[90m';
-const reset = '\x1b[0m';
-const red = '\x1b[31m';
-const green = '\x1b[32m';
-const yellow = '\x1b[33m';
+const codes = { esc: 27, nl: 10 };
+const esc = String.fromCharCode(codes.esc);
+const nl = String.fromCharCode(codes.nl);
+
+const bold = esc + '[1m';
+const gray = esc + '[90m';
+const reset = esc + '[0m';
+const red = esc + '[31m';
+const green = esc + '[32m';
+const yellow = esc + '[33m';
 
 type DebugPath = { start: number; end?: number; path: string; value?: any };
 class DebugReader extends P._TEST._Reader {
@@ -131,7 +135,7 @@ export function table(data: any[]) {
         widths[k] || 0,
         chrWidth(str(k)),
         str(elm[k])
-          .split('\n')
+          .split(nl)
           .reduce((a, b) => Math.max(a, chrWidth(b)), 0)
       );
     }
@@ -142,21 +146,21 @@ export function table(data: any[]) {
   res.push(wrap(` ${columns.map((c) => `${bold}${pad(c, widths[c])}`).join(padding)}${reset}`, 3));
   for (let idx = 0; idx < data.length; idx++) {
     const elm = data[idx];
-    const row = columns.map((i) => str(elm[i]).split('\n'));
+    const row = columns.map((i) => str(elm[i]).split(nl));
     let message = [...Array(Math.max(...row.map((i) => i.length))).keys()]
       .map((line) => row.map((c, i) => pad(str(c[line]), widths[columns[i]])))
       .map((line, _) => wrap(` ${line.join(padding)} `, 1))
-      .join('\n');
+      .join(nl);
     res.push(message);
   }
   for (let i = 0; i < res.length; i++) {
     const border = columns
       .map((c) => ''.padEnd(widths[c], '─'))
       .join(`─${i === res.length - 1 ? '┴' : '┼'}─`);
-    res[i] += wrap(`\n${reset}${gray}─${border}─${reset}`);
+    res[i] += wrap(`${nl}${reset}${gray}─${border}─${reset}`);
   }
   // @ts-ignore
-  console.log(res.join('\n'));
+  console.log(res.join(nl));
 }
 
 function fmtData(data: P.Bytes, perLine = 8) {
@@ -164,7 +168,7 @@ function fmtData(data: P.Bytes, perLine = 8) {
   for (let i = 0; i < data.length; i += perLine) {
     res.push(hex.encode(data.slice(i, i + perLine)));
   }
-  return res.map((i) => `${bold}${i}${reset}`).join('\n');
+  return res.map((i) => `${bold}${i}${reset}`).join(nl);
 }
 
 function fmtValue(value: any) {
@@ -226,8 +230,8 @@ function diffData(a: P.Bytes, e: P.Bytes) {
   for (let i = 0; i < len; i++) {
     const [aI, eI] = [a[i], e[i]];
     if (i && !(i % 8)) {
-      if (aI !== undefined) outA += '\n';
-      if (eI !== undefined) outE += '\n';
+      if (aI !== undefined) outA += nl;
+      if (eI !== undefined) outE += nl;
     }
     if (aI !== undefined) outA += aI === eI ? charHex(aI) : `${yellow}${charHex(aI)}${reset}`;
     if (eI !== undefined) outE += aI === eI ? charHex(eI) : `${yellow}${charHex(eI)}${reset}`;
@@ -237,18 +241,18 @@ function diffData(a: P.Bytes, e: P.Bytes) {
 
 function diffPath(a: string, e: string) {
   if (a === e) return a;
-  return `A: ${red}${a}${reset}\nE: ${green}${e}${reset}`;
+  return `A: ${red}${a}${reset}${nl}E: ${green}${e}${reset}`;
 }
 function diffLength(a: P.Bytes, e: P.Bytes) {
   const [aLen, eLen] = [a.length, e.length];
   if (aLen === eLen) return aLen;
-  return `A: ${red}${aLen}${reset}\nE: ${green}${eLen}${reset}`;
+  return `A: ${red}${aLen}${reset}${nl}E: ${green}${eLen}${reset}`;
 }
 
 function diffValue(a: any, e: any) {
   const [aV, eV] = [a, e].map(fmtValue);
   if (aV === eV) return aV;
-  return `A: ${red}${aV}${reset}\nE: ${green}${eV}${reset}`;
+  return `A: ${red}${aV}${reset}${nl}E: ${green}${eV}${reset}`;
 }
 
 export function diff(
