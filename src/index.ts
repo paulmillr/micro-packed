@@ -1388,7 +1388,7 @@ export const bool: CoderType<boolean> = /* @__PURE__ */ wrap({
  * const unknownBytes = P.bytes(null, false); // Unknown size bytes, will parse until end of buffer
  * const zeroTerminatedBytes = P.bytes(new Uint8Array([0]), false); // Zero-terminated bytes
  */
-export const bytes = (len: Length, le = false): CoderType<Bytes> => {
+const createBytes = (len: Length, le = false): CoderType<Bytes> => {
   if (typeof le !== 'boolean') throw new Error(`bytes/le: expected boolean, got ${typeof le}`);
   const _length = lengthCoder(len);
   const _isb = isBytes(len);
@@ -1417,6 +1417,9 @@ export const bytes = (len: Length, le = false): CoderType<Bytes> => {
     },
   });
 };
+
+export { createBytes as bytes, createHex as hex };
+
 /**
  * Prefix-encoded value using a length prefix and an inner CoderType.
  * The prefix can have:
@@ -1433,7 +1436,7 @@ export const bytes = (len: Length, le = false): CoderType<Bytes> => {
  */
 export function prefix<T>(len: Length, inner: CoderType<T>): CoderType<T> {
   if (!isCoder(inner)) throw new Error(`prefix: invalid inner value ${inner}`);
-  return apply(bytes(len), reverse(inner)) as CoderType<T>;
+  return apply(createBytes(len), reverse(inner)) as CoderType<T>;
 }
 
 /**
@@ -1454,7 +1457,7 @@ export function prefix<T>(len: Length, inner: CoderType<T>): CoderType<T> {
  * const _cstring = P.string(new Uint8Array([0])); // Same thing
  */
 export const string = (len: Length, le = false): CoderType<string> =>
-  validate(apply(bytes(len, le), utf8), (value) => {
+  validate(apply(createBytes(len, le), utf8), (value) => {
     // TextEncoder/TextDecoder will fail on non-string, but we create more readable errors earlier
     if (typeof value !== 'string') throw new Error(`expected string, got ${typeof value}`);
     return value;
@@ -1476,11 +1479,11 @@ type HexOpts = { isLE?: boolean; with0x?: boolean };
  * const dynamicHex = P.hex(P.U16BE, {isLE: false, with0x: true}); // Hex string with 0x prefix and U16BE length
  * const fixedHex = P.hex(32, {isLE: false, with0x: false}); // Fixed-length 32-byte hex string without 0x prefix
  */
-export const hex = (
+const createHex = (
   len: Length,
   options: HexOpts = { isLE: false, with0x: false }
 ): CoderType<string> => {
-  let inner = apply(bytes(len, options.isLE), baseHex);
+  let inner = apply(createBytes(len, options.isLE), baseHex);
   if (typeof options.with0x !== 'boolean')
     throw new Error(`hex/with0x: expected boolean, got ${typeof options.with0x}`);
   if (options.with0x) {
@@ -1714,7 +1717,7 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
  */
 export const magicBytes = (constant: Bytes | string): CoderType<undefined> => {
   const c = typeof constant === 'string' ? utf8.decode(constant) : constant;
-  return magic(bytes(c.length), c);
+  return magic(createBytes(c.length), c);
 };
 
 /**
