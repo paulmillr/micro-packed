@@ -38,26 +38,18 @@ Exports can be groupped like this:
 - Debugger
 */
 
-/**
- * Shortcut to zero-length (empty) byte array
- */
-export const EMPTY = /* @__PURE__ */ new Uint8Array();
-/**
- * Shortcut to one-element (element is 0) byte array
- */
-export const NULL = /* @__PURE__ */ new Uint8Array([0]);
+/** Shortcut to zero-length (empty) byte array */
+export const EMPTY: Uint8Array = /* @__PURE__ */ new Uint8Array();
+/** Shortcut to one-element (element is 0) byte array */
+export const NULL: Uint8Array = /* @__PURE__ */ new Uint8Array([0]);
 
-/**
- * Checks if two Uint8Arrays are equal. Not constant-time.
- */
+/** Checks if two Uint8Arrays are equal. Not constant-time. */
 function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
 }
-/**
- * Checks if the given value is a Uint8Array.
- */
+/** Checks if the given value is a Uint8Array. */
 function isBytes(a: unknown): a is Bytes {
   return a instanceof Uint8Array || (ArrayBuffer.isView(a) && a.constructor.name === 'Uint8Array');
 }
@@ -95,7 +87,7 @@ const createView = (arr: Uint8Array) => new DataView(arr.buffer, arr.byteOffset,
  * Array, Uint8Array and others are not plain objects.
  * @param obj - The value to be checked.
  */
-function isPlainObject(obj: any) {
+function isPlainObject(obj: any): boolean {
   return Object.prototype.toString.call(obj) === '[object Object]';
 }
 
@@ -103,7 +95,15 @@ function isNum(num: unknown): num is number {
   return Number.isSafeInteger(num);
 }
 
-export const utils = {
+export const utils: {
+  equalBytes: typeof equalBytes;
+  isBytes: typeof isBytes;
+  isCoder: typeof isCoder;
+  checkBounds: typeof checkBounds;
+  concatBytes: typeof concatBytes;
+  createView: (arr: Uint8Array) => DataView;
+  isPlainObject: typeof isPlainObject;
+} = {
   equalBytes,
   isBytes,
   isCoder,
@@ -208,9 +208,7 @@ export type TypedArray =
   | Uint16Array | Int16Array
   | Uint32Array | Int32Array;
 
-/**
- * Writable version of a type, where readonly properties are made writable.
- */
+/** Writable version of a type, where readonly properties are made writable. */
 export type Writable<T> = T extends {}
   ? T extends TypedArray
     ? T
@@ -235,9 +233,7 @@ export type StructRecord<T extends Record<string, any>> = {
 };
 
 export type StructOut = Record<string, any>;
-/**
- * Padding function that takes an index and returns a padding value.
- */
+/** Padding function that takes an index and returns a padding value. */
 export type PadFn = (i: number) => number;
 
 /**
@@ -336,9 +332,7 @@ const Bitset = {
   },
 };
 
-/**
- * Path related utils (internal)
- */
+/** Path related utils (internal) */
 type Path = { obj: StructOut; field?: string };
 type PathStack = Path[];
 export type _PathObjFn = (cb: (field: string, fieldFn: Function) => void) => void;
@@ -351,7 +345,7 @@ const Path = {
    * - pushing field inside of field (real bug)
    * NOTE: we don't want to do '.pop' on error!
    */
-  pushObj: (stack: PathStack, obj: StructOut, objFn: _PathObjFn) => {
+  pushObj: (stack: PathStack, obj: StructOut, objFn: _PathObjFn): void => {
     const last: Path = { obj };
     stack.push(last);
     objFn((field: string, fieldFn: Function) => {
@@ -361,19 +355,19 @@ const Path = {
     });
     stack.pop();
   },
-  path: (stack: PathStack) => {
+  path: (stack: PathStack): string => {
     const res = [];
     for (const i of stack) if (i.field !== undefined) res.push(i.field);
     return res.join('/');
   },
-  err(name: string, stack: PathStack, msg: string | Error) {
+  err(name: string, stack: PathStack, msg: string | Error): Error {
     const err = new Error(
       `${name}(${Path.path(stack)}): ${typeof msg === 'string' ? msg : msg.message}`
     );
     if (msg instanceof Error && msg.stack) err.stack = msg.stack;
     return err;
   },
-  resolve: (stack: PathStack, path: string) => {
+  resolve: (stack: PathStack, path: string): StructOut | undefined => {
     const parts = path.split('/');
     const objPath = stack.map((i) => i.obj);
     let i = 0;
@@ -402,21 +396,13 @@ export type ReaderOpts = {
 // These are safe API for external usage
 export type Reader = {
   // Utils
-  /**
-   * Current position in the buffer.
-   */
+  /** Current position in the buffer. */
   readonly pos: number;
-  /**
-   * Number of bytes left in the buffer.
-   */
+  /** Number of bytes left in the buffer. */
   readonly leftBytes: number;
-  /**
-   * Total number of bytes in the buffer.
-   */
+  /** Total number of bytes in the buffer. */
   readonly totalBytes: number;
-  /**
-   * Checks if the end of the buffer has been reached.
-   */
+  /** Checks if the end of the buffer has been reached. */
   isEnd(): boolean;
   /**
    * Creates an error with the given message. Adds information about current field path.
@@ -510,9 +496,7 @@ class _Reader implements Reader {
   ) {
     this.view = createView(data);
   }
-  /**
-   * Internal method for pointers.
-   */
+  /** Internal method for pointers. */
   _enablePointers(): void {
     if (this.parent) return this.parent._enablePointers();
     if (this.bs) return;
@@ -534,7 +518,7 @@ class _Reader implements Reader {
     return res;
   }
 
-  pushObj(obj: StructOut, objFn: _PathObjFn) {
+  pushObj(obj: StructOut, objFn: _PathObjFn): void {
     return Path.pushObj(this.stack, obj, objFn);
   }
   readView(n: number, fn: (view: DataView, pos: number) => number): number {
@@ -545,11 +529,11 @@ class _Reader implements Reader {
     return res;
   }
   // read bytes by absolute offset
-  absBytes(n: number) {
+  absBytes(n: number): Uint8Array {
     if (n > this.data.length) throw new Error('Unexpected end of buffer');
     return this.data.subarray(n);
   }
-  finish() {
+  finish(): void {
     if (this.opts.allowUnreadBytes) return;
     if (this.bitPos) {
       throw this.err(
@@ -578,14 +562,14 @@ class _Reader implements Reader {
     }
   }
   // User methods
-  err(msg: string | Error) {
+  err(msg: string | Error): Error {
     return Path.err('Reader', this.stack, msg);
   }
-  offsetReader(n: number) {
+  offsetReader(n: number): _Reader {
     if (n > this.data.length) throw this.err('offsetReader: Unexpected end of buffer');
     return new _Reader(this.absBytes(n), this.opts, this.stack, this, n);
   }
-  bytes(n: number, peek = false) {
+  bytes(n: number, peek = false): Uint8Array {
     if (this.bitPos) throw this.err('readBytes: bitPos not empty');
     if (!Number.isFinite(n)) throw this.err(`readBytes: wrong length=${n}`);
     if (this.pos + n > this.data.length) throw this.err('readBytes: Unexpected end of buffer');
@@ -610,7 +594,7 @@ class _Reader implements Reader {
     return this.pos >= this.data.length && !this.bitPos;
   }
   // bits are read in BE mode (left to right): (0b1000_0000).readBits(1) == 1
-  bits(bits: number) {
+  bits(bits: number): number {
     if (bits > 32) throw this.err('BitReader: cannot read more than 32 bits in single call');
     let out = 0;
     while (bits) {
@@ -627,7 +611,7 @@ class _Reader implements Reader {
     // Fix signed integers
     return out >>> 0;
   }
-  find(needle: Bytes, pos = this.pos) {
+  find(needle: Bytes, pos: number = this.pos): number | undefined {
     if (!isBytes(needle)) throw this.err(`find: needle is not bytes! ${needle}`);
     if (this.bitPos) throw this.err('findByte: bitPos not empty');
     if (!needle.length) throw this.err(`find: needle is empty`);
@@ -662,10 +646,10 @@ class _Writer implements Writer {
   constructor(readonly stack: PathStack = []) {
     this.view = createView(this.viewBuf);
   }
-  pushObj(obj: StructOut, objFn: _PathObjFn) {
+  pushObj(obj: StructOut, objFn: _PathObjFn): void {
     return Path.pushObj(this.stack, obj, objFn);
   }
-  writeView(len: number, fn: (view: DataView) => void) {
+  writeView(len: number, fn: (view: DataView) => void): void {
     if (this.finished) throw this.err('buffer: finished');
     if (!isNum(len) || len > 8) throw new Error(`wrong writeView length=${len}`);
     fn(this.view);
@@ -673,17 +657,17 @@ class _Writer implements Writer {
     this.viewBuf.fill(0);
   }
   // User methods
-  err(msg: string | Error) {
+  err(msg: string | Error): Error {
     if (this.finished) throw this.err('buffer: finished');
     return Path.err('Reader', this.stack, msg);
   }
-  bytes(b: Bytes) {
+  bytes(b: Bytes): void {
     if (this.finished) throw this.err('buffer: finished');
     if (this.bitPos) throw this.err('writeBytes: ends with non-empty bit buffer');
     this.buffers.push(b);
     this.pos += b.length;
   }
-  byte(b: number) {
+  byte(b: number): void {
     if (this.finished) throw this.err('buffer: finished');
     if (this.bitPos) throw this.err('writeByte: ends with non-empty bit buffer');
     this.buffers.push(new Uint8Array([b]));
@@ -720,7 +704,7 @@ class _Writer implements Writer {
     }
     return buf;
   }
-  bits(value: number, bits: number) {
+  bits(value: number, bits: number): void {
     if (bits > 32) throw this.err('writeBits: cannot write more than 32 bits in single call');
     if (value >= 2 ** bits) throw this.err(`writeBits: value (${value}) >= 2**bits (${bits})`);
     while (bits) {
@@ -739,10 +723,8 @@ class _Writer implements Writer {
 }
 // Immutable LE<->BE
 const swapEndianness = (b: Bytes): Bytes => Uint8Array.from(b).reverse();
-/**
- * Internal function for checking bit bounds of bigint in signed/unsinged form
- */
-function checkBounds(value: bigint, bits: bigint, signed: boolean) {
+/** Internal function for checking bit bounds of bigint in signed/unsinged form */
+function checkBounds(value: bigint, bits: bigint, signed: boolean): void {
   if (signed) {
     // [-(2**(32-1)), 2**(32-1)-1]
     const signBit = 2n ** (bits - 1n);
@@ -1031,15 +1013,20 @@ function match<
     },
   };
 }
-/**
- * Reverses direction of coder
- */
+/** Reverses direction of coder */
 const reverse = <F, T>(coder: Coder<F, T>): Coder<T, F> => {
   if (!isBaseCoder(coder)) throw new Error('BaseCoder expected');
   return { encode: coder.decode, decode: coder.encode };
 };
 
-export const coders = { dict, numberBigint, tsEnum, decimal, match, reverse };
+export const coders: {
+  dict: typeof dict;
+  numberBigint: BaseCoder<bigint, number>;
+  tsEnum: typeof tsEnum;
+  decimal: typeof decimal;
+  match: typeof match;
+  reverse: <F, T>(coder: Coder<F, T>) => Coder<T, F>;
+} = { dict, numberBigint, tsEnum, decimal, match, reverse };
 
 /**
  * CoderType for parsing individual bits.
@@ -1126,54 +1113,30 @@ export const bigint = (
     },
   });
 };
-/**
- * Unsigned 256-bit little-endian integer CoderType.
- */
-export const U256LE = /* @__PURE__ */ bigint(32, true);
-/**
- * Unsigned 256-bit big-endian integer CoderType.
- */
-export const U256BE = /* @__PURE__ */ bigint(32, false);
-/**
- * Signed 256-bit little-endian integer CoderType.
- */
-export const I256LE = /* @__PURE__ */ bigint(32, true, true);
-/**
- * Signed 256-bit big-endian integer CoderType.
- */
-export const I256BE = /* @__PURE__ */ bigint(32, false, true);
-/**
- * Unsigned 128-bit little-endian integer CoderType.
- */
-export const U128LE = /* @__PURE__ */ bigint(16, true);
-/**
- * Unsigned 128-bit big-endian integer CoderType.
- */
-export const U128BE = /* @__PURE__ */ bigint(16, false);
-/**
- * Signed 128-bit little-endian integer CoderType.
- */
-export const I128LE = /* @__PURE__ */ bigint(16, true, true);
-/**
- * Signed 128-bit big-endian integer CoderType.
- */
-export const I128BE = /* @__PURE__ */ bigint(16, false, true);
-/**
- * Unsigned 64-bit little-endian integer CoderType.
- */
-export const U64LE = /* @__PURE__ */ bigint(8, true);
-/**
- * Unsigned 64-bit big-endian integer CoderType.
- */
-export const U64BE = /* @__PURE__ */ bigint(8, false);
-/**
- * Signed 64-bit little-endian integer CoderType.
- */
-export const I64LE = /* @__PURE__ */ bigint(8, true, true);
-/**
- * Signed 64-bit big-endian integer CoderType.
- */
-export const I64BE = /* @__PURE__ */ bigint(8, false, true);
+/** Unsigned 256-bit little-endian integer CoderType. */
+export const U256LE: CoderType<bigint> = /* @__PURE__ */ bigint(32, true);
+/** Unsigned 256-bit big-endian integer CoderType. */
+export const U256BE: CoderType<bigint> = /* @__PURE__ */ bigint(32, false);
+/** Signed 256-bit little-endian integer CoderType. */
+export const I256LE: CoderType<bigint> = /* @__PURE__ */ bigint(32, true, true);
+/** Signed 256-bit big-endian integer CoderType. */
+export const I256BE: CoderType<bigint> = /* @__PURE__ */ bigint(32, false, true);
+/** Unsigned 128-bit little-endian integer CoderType. */
+export const U128LE: CoderType<bigint> = /* @__PURE__ */ bigint(16, true);
+/** Unsigned 128-bit big-endian integer CoderType. */
+export const U128BE: CoderType<bigint> = /* @__PURE__ */ bigint(16, false);
+/** Signed 128-bit little-endian integer CoderType. */
+export const I128LE: CoderType<bigint> = /* @__PURE__ */ bigint(16, true, true);
+/** Signed 128-bit big-endian integer CoderType. */
+export const I128BE: CoderType<bigint> = /* @__PURE__ */ bigint(16, false, true);
+/** Unsigned 64-bit little-endian integer CoderType. */
+export const U64LE: CoderType<bigint> = /* @__PURE__ */ bigint(8, true);
+/** Unsigned 64-bit big-endian integer CoderType. */
+export const U64BE: CoderType<bigint> = /* @__PURE__ */ bigint(8, false);
+/** Signed 64-bit little-endian integer CoderType. */
+export const I64LE: CoderType<bigint> = /* @__PURE__ */ bigint(8, true, true);
+/** Signed 64-bit big-endian integer CoderType. */
+export const I64BE: CoderType<bigint> = /* @__PURE__ */ bigint(8, false, true);
 
 /**
  * CoderType for working with numbber values (up to 6 bytes/48 bits).
@@ -1250,73 +1213,53 @@ const intView = (len: number, signed: boolean, opts: ViewCoder) => {
   });
 };
 
-/**
- * Unsigned 32-bit little-endian integer CoderType.
- */
-export const U32LE = /* @__PURE__ */ intView(4, false, {
+/** Unsigned 32-bit little-endian integer CoderType. */
+export const U32LE: CoderType<number> = /* @__PURE__ */ intView(4, false, {
   read: (view, pos) => view.getUint32(pos, true),
   write: (view, value) => view.setUint32(0, value, true),
 });
-/**
- * Unsigned 32-bit big-endian integer CoderType.
- */
-export const U32BE = /* @__PURE__ */ intView(4, false, {
+/** Unsigned 32-bit big-endian integer CoderType. */
+export const U32BE: CoderType<number> = /* @__PURE__ */ intView(4, false, {
   read: (view, pos) => view.getUint32(pos, false),
   write: (view, value) => view.setUint32(0, value, false),
 });
-/**
- * Signed 32-bit little-endian integer CoderType.
- */
-export const I32LE = /* @__PURE__ */ intView(4, true, {
+/** Signed 32-bit little-endian integer CoderType. */
+export const I32LE: CoderType<number> = /* @__PURE__ */ intView(4, true, {
   read: (view, pos) => view.getInt32(pos, true),
   write: (view, value) => view.setInt32(0, value, true),
 });
-/**
- * Signed 32-bit big-endian integer CoderType.
- */
-export const I32BE = /* @__PURE__ */ intView(4, true, {
+/** Signed 32-bit big-endian integer CoderType. */
+export const I32BE: CoderType<number> = /* @__PURE__ */ intView(4, true, {
   read: (view, pos) => view.getInt32(pos, false),
   write: (view, value) => view.setInt32(0, value, false),
 });
-/**
- * Unsigned 16-bit little-endian integer CoderType.
- */
-export const U16LE = /* @__PURE__ */ intView(2, false, {
+/** Unsigned 16-bit little-endian integer CoderType. */
+export const U16LE: CoderType<number> = /* @__PURE__ */ intView(2, false, {
   read: (view, pos) => view.getUint16(pos, true),
   write: (view, value) => view.setUint16(0, value, true),
 });
-/**
- * Unsigned 16-bit big-endian integer CoderType.
- */
-export const U16BE = /* @__PURE__ */ intView(2, false, {
+/** Unsigned 16-bit big-endian integer CoderType. */
+export const U16BE: CoderType<number> = /* @__PURE__ */ intView(2, false, {
   read: (view, pos) => view.getUint16(pos, false),
   write: (view, value) => view.setUint16(0, value, false),
 });
-/**
- * Signed 16-bit little-endian integer CoderType.
- */
-export const I16LE = /* @__PURE__ */ intView(2, true, {
+/** Signed 16-bit little-endian integer CoderType. */
+export const I16LE: CoderType<number> = /* @__PURE__ */ intView(2, true, {
   read: (view, pos) => view.getInt16(pos, true),
   write: (view, value) => view.setInt16(0, value, true),
 });
-/**
- * Signed 16-bit big-endian integer CoderType.
- */
-export const I16BE = /* @__PURE__ */ intView(2, true, {
+/** Signed 16-bit big-endian integer CoderType. */
+export const I16BE: CoderType<number> = /* @__PURE__ */ intView(2, true, {
   read: (view, pos) => view.getInt16(pos, false),
   write: (view, value) => view.setInt16(0, value, false),
 });
-/**
- * Unsigned 8-bit integer CoderType.
- */
-export const U8 = /* @__PURE__ */ intView(1, false, {
+/** Unsigned 8-bit integer CoderType. */
+export const U8: CoderType<number> = /* @__PURE__ */ intView(1, false, {
   read: (view, pos) => view.getUint8(pos),
   write: (view, value) => view.setUint8(0, value),
 });
-/**
- * Signed 8-bit integer CoderType.
- */
-export const I8 = /* @__PURE__ */ intView(1, true, {
+/** Signed 8-bit integer CoderType. */
+export const I8: CoderType<number> = /* @__PURE__ */ intView(1, true, {
   read: (view, pos) => view.getInt8(pos),
   write: (view, value) => view.setInt8(0, value),
 });
@@ -1337,26 +1280,16 @@ const f64 = (le?: boolean) =>
     write: (view, value) => view.setFloat64(0, value, le),
   });
 
-/**
- * 32-bit big-endian floating point CoderType ("binary32", IEEE 754-2008).
- */
-export const F32BE = /* @__PURE__ */ f32(false);
-/**
- * 32-bit little-endian floating point  CoderType ("binary32", IEEE 754-2008).
- */
-export const F32LE = /* @__PURE__ */ f32(true);
-/**
- * A 64-bit big-endian floating point type ("binary64", IEEE 754-2008). Any JS number can be encoded.
- */
-export const F64BE = /* @__PURE__ */ f64(false);
-/**
- * A 64-bit little-endian floating point type ("binary64", IEEE 754-2008). Any JS number can be encoded.
- */
-export const F64LE = /* @__PURE__ */ f64(true);
+/** 32-bit big-endian floating point CoderType ("binary32", IEEE 754-2008). */
+export const F32BE: CoderType<number> = /* @__PURE__ */ f32(false);
+/** 32-bit little-endian floating point  CoderType ("binary32", IEEE 754-2008). */
+export const F32LE: CoderType<number> = /* @__PURE__ */ f32(true);
+/** A 64-bit big-endian floating point type ("binary64", IEEE 754-2008). Any JS number can be encoded. */
+export const F64BE: CoderType<number> = /* @__PURE__ */ f64(false);
+/** A 64-bit little-endian floating point type ("binary64", IEEE 754-2008). Any JS number can be encoded. */
+export const F64LE: CoderType<number> = /* @__PURE__ */ f64(true);
 
-/**
- * Boolean CoderType.
- */
+/** Boolean CoderType. */
 export const bool: CoderType<boolean> = /* @__PURE__ */ wrap({
   size: 1,
   encodeStream: (w: Writer, value: boolean) => w.byte(value ? 1 : 0),
@@ -1463,10 +1396,8 @@ export const string = (len: Length, le = false): CoderType<string> =>
     return value;
   });
 
-/**
- * NUL-terminated string CoderType.
- */
-export const cstring = /* @__PURE__ */ string(NULL);
+/** NUL-terminated string CoderType. */
+export const cstring: CoderType<string> = /* @__PURE__ */ string(NULL);
 
 type HexOpts = { isLE?: boolean; with0x?: boolean };
 /**
@@ -2079,9 +2010,7 @@ export function bitset<Names extends readonly string[]>(
     },
   });
 }
-/**
- * Padding function which always returns zero
- */
+/** Padding function which always returns zero */
 export const ZeroPad: PadFn = (_) => 0;
 
 function padLength(blockSize: number, len: number): number {
@@ -2205,4 +2134,52 @@ export function pointer<T>(
 }
 
 // Internal methods for test purposes only
-export const _TEST = { _bitset: Bitset, _Reader, _Writer, Path };
+export const _TEST: {
+  _bitset: {
+    BITS: number;
+    FULL_MASK: number;
+    len: (len: number) => number;
+    create: (len: number) => Uint32Array;
+    clean: (bs: Uint32Array) => Uint32Array;
+    debug: (bs: Uint32Array) => string[];
+    checkLen: (bs: Uint32Array, len: number) => void;
+    chunkLen: (bsLen: number, pos: number, len: number) => void;
+    set: (bs: Uint32Array, chunk: number, value: number, allowRewrite?: boolean) => boolean;
+    pos: (
+      pos: number,
+      i: number
+    ) => {
+      chunk: number;
+      mask: number;
+    };
+    indices: (bs: Uint32Array, len: number, invert?: boolean) => number[];
+    range: (arr: number[]) => {
+      pos: number;
+      length: number;
+    }[];
+    rangeDebug: (bs: Uint32Array, len: number, invert?: boolean) => string;
+    setRange: (
+      bs: Uint32Array,
+      bsLen: number,
+      pos: number,
+      len: number,
+      allowRewrite?: boolean
+    ) => boolean;
+  };
+  _Reader: typeof _Reader;
+  _Writer: typeof _Writer;
+  Path: {
+    /**
+     * Internal method for handling stack of paths (debug, errors, dynamic fields via path)
+     * This is looks ugly (callback), but allows us to force stack cleaning by construction (.pop always after function).
+     * Also, this makes impossible:
+     * - pushing field when stack is empty
+     * - pushing field inside of field (real bug)
+     * NOTE: we don't want to do '.pop' on error!
+     */
+    pushObj: (stack: PathStack, obj: StructOut, objFn: _PathObjFn) => void;
+    path: (stack: PathStack) => string;
+    err(name: string, stack: PathStack, msg: string | Error): Error;
+    resolve: (stack: PathStack, path: string) => StructOut | undefined;
+  };
+} = { _bitset: Bitset, _Reader, _Writer, Path };

@@ -123,7 +123,7 @@ function wrap(s: string, padding: number = 0) {
   return `${s}${reset}...`;
 }
 
-export function table(data: any[]) {
+export function table(data: any[]): void {
   let res: string[] = [];
   const str = (v: any) => (v === undefined ? '' : '' + v);
   const pad = (s: string, width: number) =>
@@ -260,7 +260,7 @@ export function diff(
   actual: string | P.Bytes,
   expected: string | P.Bytes,
   skipSame = true
-) {
+): void {
   // @ts-ignore
   console.log('==== DIFF ====');
   const [_actual, _expected] = [actual, expected].map((i) => getMap(coder, i)) as [
