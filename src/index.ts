@@ -360,7 +360,7 @@ const Path = {
     for (const i of stack) if (i.field !== undefined) res.push(i.field);
     return res.join('/');
   },
-  err(name: string, stack: PathStack, msg: string | Error): Error {
+  err: (name: string, stack: PathStack, msg: string | Error): Error => {
     const err = new Error(
       `${name}(${Path.path(stack)}): ${typeof msg === 'string' ? msg : msg.message}`
     );
@@ -923,7 +923,7 @@ function tsEnum<T extends Enum>(e: T): BaseCoder<number, EnumKeys<T>> {
  * decimal8.encode(630880845n); // '6.30880845'
  * decimal8.decode('6.30880845'); // 630880845n
  */
-function decimal(precision: number, round = false) {
+function decimal(precision: number, round = false): Coder<bigint, string> {
   if (!isNum(precision)) throw new Error(`decimal/precision: wrong value ${precision}`);
   if (typeof round !== 'boolean')
     throw new Error(`decimal/round: expected boolean, got ${typeof round}`);
