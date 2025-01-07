@@ -1,6 +1,6 @@
 {
   "name": "@paulmillr/micro-packed",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "exports": {
     ".": "./src/index.ts",
     "./debugger": "./src/debugger.ts"
