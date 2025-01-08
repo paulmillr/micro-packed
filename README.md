@@ -7,9 +7,9 @@ Define complex binary structures using composable primitives. Comes with a frien
 Used in:
 
 - [btc-signer](https://github.com/paulmillr/scure-btc-signer) for parsing of Bitcoin Script
-- [micro-ordinals](https://github.com/paulmillr/micro-ordinals) for ordinal parsing
 - [eth-signer](https://github.com/paulmillr/micro-eth-signer) for RLP and SSZ decoding. RLP pointers are protected against DoS
 - [sol-signer](https://github.com/paulmillr/micro-sol-signer) for parsing of keys, messages and other things
+- [micro-ordinals](https://github.com/paulmillr/micro-ordinals) for Bitcoin ordinal parsing
 - [key-producer](https://github.com/paulmillr/micro-key-producer) for lightweight implementations of PGP, SSH and OTP
 
 ## Usage
