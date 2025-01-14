@@ -42,4 +42,4 @@ describe('slow', () => {
   });
 });
 
-should.run();
+should.runWhen(import.meta.url);

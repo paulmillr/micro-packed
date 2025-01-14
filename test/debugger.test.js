@@ -79,4 +79,4 @@ should('PSBT1', () => {
 
 // TODO:
 // P.array(null, P.U16) -> bad error, hard to debug
-should.run();
+should.runWhen(import.meta.url);
