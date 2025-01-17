@@ -39,6 +39,8 @@
     "lint": "prettier --check src",
     "format": "prettier --write src",
     "test": "node test/index.js",
+    "test:bun": "bun test/index.js",
+    "test:deno": "deno test/index.js",
     "test:slow": "node test/slow.test.js"
   },
   "author": "Paul Miller (https://paulmillr.com)",
