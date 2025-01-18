@@ -1,8 +1,8 @@
-import { deepStrictEqual, throws } from 'node:assert';
-import { describe, should } from 'micro-should';
 import { hex } from '@scure/base';
-import * as P from '../lib/esm/index.js';
+import { describe, should } from 'micro-should';
+import { deepStrictEqual, throws } from 'node:assert';
 import * as PD from '../lib/esm/debugger.js';
+import * as P from '../lib/esm/index.js';
 
 const Reader = P._TEST._Reader;
 const Writer = P._TEST._Writer;
@@ -1234,7 +1234,7 @@ describe('coders', () => {
       '-Infinity',
       '-0',
     ];
-    for (const t of fail) throws(() => i64.encode(t), `${t}`);
+    for (const t of fail) throws(() => i64.encode(t), `${t || 'item'}`);
     const d5 = P.coders.decimal(5);
     deepStrictEqual(d5.encode(123n), '0.00123');
     deepStrictEqual(d5.encode(-123n), '-0.00123');
