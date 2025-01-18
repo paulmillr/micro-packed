@@ -1,4 +1,4 @@
-import { mark, compare, utils as butils } from 'micro-bmark';
+import mark from 'micro-bmark';
 import * as P from 'micro-packed';
 
 const SAMPLES = 1000;
@@ -33,13 +33,13 @@ export async function main() {
   await mark('basic decode', 10_000_000, () => P.U8.decode(encoded));
   for (let [name, { coder, value }] of Object.entries(STRUCTS)) {
     const encoded = coder.encode(value);
-    await compare(name, name === 'complex' ? 1_000_000 : SAMPLES, {
-      encode: () => coder.encode(value),
-      decode: () => coder.decode(encoded),
-    });
+    // await compare(name, name === 'complex' ? 1_000_000 : SAMPLES, {
+    //   encode: () => coder.encode(value),
+    //   decode: () => coder.decode(encoded),
+    // });
   }
   // Log current RAM
-  butils.logMem();
+  // butils.logMem();
 }
 
 // ESM is broken.
