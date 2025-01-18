@@ -1234,7 +1234,10 @@ describe('coders', () => {
       '-Infinity',
       '-0',
     ];
-    for (const t of fail) throws(() => i64.encode(t), `${t || 'item'}`);
+    for (let i = 0; i < fail.length; i++) {
+      let t = fail[i];
+      throws(() => i64.encode(t), `index ${i}`);
+    }
     const d5 = P.coders.decimal(5);
     deepStrictEqual(d5.encode(123n), '0.00123');
     deepStrictEqual(d5.encode(-123n), '-0.00123');
