@@ -14,7 +14,9 @@ Used in:
 
 ## Usage
 
-> npm install micro-packed
+> `npm install micro-packed`
+
+> `jsr add jsr:@paulmillr/micro-packed`
 
 ```ts
 import * as P from 'micro-packed';

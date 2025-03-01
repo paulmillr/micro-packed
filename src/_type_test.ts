@@ -1,5 +1,5 @@
-import * as P from './index.js';
 import * as base from '@scure/base';
+import * as P from './index.ts';
 // Should not be included in npm package. For typescript testing only
 const assertType = <T>(_value: T) => {};
 
@@ -101,14 +101,14 @@ const tree = P.struct({
 assertType<P.CoderType<Tree>>(tree);
 
 // tsEnum
-enum Test {
-  a = 0x00,
-  b = 0x01,
-  c = 0x02,
-}
-assertType<base.Coder<number, 'a' | 'b' | 'c'>>(P.coders.tsEnum(Test));
-const e = P.apply(P.U8, P.coders.tsEnum(Test));
-assertType<P.CoderType<'a' | 'b' | 'c'>>(e);
+// enum Test {
+//   a = 0x00,
+//   b = 0x01,
+//   c = 0x02,
+// }
+// assertType<base.Coder<number, 'a' | 'b' | 'c'>>(P.coders.tsEnum(Test));
+// const e = P.apply(P.U8, P.coders.tsEnum(Test));
+// assertType<P.CoderType<'a' | 'b' | 'c'>>(e);
 // TODO: remove map && replace with this?
 
 // match

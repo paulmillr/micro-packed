@@ -1,5 +1,4 @@
-import type { Coder as BaseCoder } from '@scure/base';
-import { hex as baseHex, utf8 } from '@scure/base';
+import { hex as baseHex, utf8, type Coder as BaseCoder } from '@scure/base';
 
 /**
  * Define complex binary structures using composable primitives.
@@ -483,17 +482,27 @@ export type Writer = {
  */
 class _Reader implements Reader {
   pos = 0;
+  readonly data: Bytes;
+  readonly opts: ReaderOpts;
+  readonly stack: PathStack;
+  private parent: _Reader | undefined;
+  private parentOffset: number;
   private bitBuf = 0;
   private bitPos = 0;
   private bs: Uint32Array | undefined; // bitset
   private view: DataView;
   constructor(
-    readonly data: Bytes,
-    readonly opts: ReaderOpts = {},
-    readonly stack: PathStack = [],
-    private parent: _Reader | undefined = undefined,
-    private parentOffset: number = 0
+    data: Bytes,
+    opts: ReaderOpts = {},
+    stack: PathStack = [],
+    parent: _Reader | undefined = undefined,
+    parentOffset: number = 0
   ) {
+    this.data = data;
+    this.opts = opts;
+    this.stack = stack;
+    this.parent = parent;
+    this.parentOffset = parentOffset;
     this.view = createView(data);
   }
   /** Internal method for pointers. */
@@ -633,6 +642,7 @@ class _Reader implements Reader {
  */
 class _Writer implements Writer {
   pos: number = 0;
+  readonly stack: PathStack;
   // We could have a single buffer here and re-alloc it with
   // x1.5-2 size each time it full, but it will be slower:
   // basic/encode bench: 395ns -> 560ns
@@ -643,7 +653,8 @@ class _Writer implements Writer {
   private viewBuf = new Uint8Array(8);
   private view: DataView;
   private finished = false;
-  constructor(readonly stack: PathStack = []) {
+  constructor(stack: PathStack = []) {
+    this.stack = stack;
     this.view = createView(this.viewBuf);
   }
   pushObj(obj: StructOut, objFn: _PathObjFn): void {

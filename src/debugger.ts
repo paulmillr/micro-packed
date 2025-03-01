@@ -1,6 +1,6 @@
 import { base64, hex } from '@scure/base';
-import * as P from './index.js';
-const Path = P._TEST.Path; // Very internal stuff, for debug only.
+import * as P from './index.ts';
+const Path = P._TEST.Path; // Internal, debug-only
 
 const UNKNOWN = '(???)';
 const codes = { esc: 27, nl: 10 };
