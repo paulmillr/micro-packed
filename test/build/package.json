@@ -1,0 +1,11 @@
+{
+  "name": "build",
+  "private": true,
+  "version": "1.0.0",
+  "main": "input.js",
+  "type": "module",
+  "devDependencies": {
+    "micro-packed": "file:../..",
+    "esbuild": "0.25.0"
+  }
+}
