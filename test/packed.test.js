@@ -1408,7 +1408,7 @@ describe('utils', () => {
       // Same
       deepStrictEqual(r.find(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0])), 0);
       // Empty needle
-      throws(() => r.find(new Uint8Array()));
+      throws(() => r.find(Uint8Array.of()));
       // Non-bytes needle
       throws(() => r.find([]));
       const r2 = new Reader(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0, 0xfa, 0xfb, 0xfc, 0xfd]));

@@ -38,9 +38,9 @@ Exports can be groupped like this:
 */
 
 /** Shortcut to zero-length (empty) byte array */
-export const EMPTY: Uint8Array = /* @__PURE__ */ new Uint8Array();
+export const EMPTY: Uint8Array = /* @__PURE__ */ Uint8Array.of();
 /** Shortcut to one-element (element is 0) byte array */
-export const NULL: Uint8Array = /* @__PURE__ */ new Uint8Array([0]);
+export const NULL: Uint8Array = /* @__PURE__ */ Uint8Array.of(0);
 
 /** Checks if two Uint8Arrays are equal. Not constant-time. */
 function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
@@ -1330,7 +1330,7 @@ export const bool: CoderType<boolean> = /* @__PURE__ */ wrap({
  * const dynamicBytes = P.bytes(P.U16BE, false);
  * const fixedBytes = P.bytes(32, false); // Fixed size bytes
  * const unknownBytes = P.bytes(null, false); // Unknown size bytes, will parse until end of buffer
- * const zeroTerminatedBytes = P.bytes(new Uint8Array([0]), false); // Zero-terminated bytes
+ * const zeroTerminatedBytes = P.bytes(Uint8Array.of(0), false); // Zero-terminated bytes
  */
 const createBytes = (len: Length, le = false): CoderType<Bytes> => {
   if (typeof le !== 'boolean') throw new Error(`bytes/le: expected boolean, got ${typeof le}`);
@@ -1398,7 +1398,7 @@ export function prefix<T>(len: Length, inner: CoderType<T>): CoderType<T> {
  * const fixedString = P.string(10, false); // Fixed size string
  * const unknownString = P.string(null, false); // Unknown size string, will parse until end of buffer
  * const nullTerminatedString = P.cstring; // NUL-terminated string
- * const _cstring = P.string(new Uint8Array([0])); // Same thing
+ * const _cstring = P.string(Uint8Array.of(0)); // Same thing
  */
 export const string = (len: Length, le = false): CoderType<string> =>
   validate(apply(createBytes(len, le), utf8), (value) => {

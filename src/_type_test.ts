@@ -6,10 +6,10 @@ const assertType = <T>(_value: T) => {};
 // Writable
 const wt1 = [1] as const;
 const wt2 = ['string'] as const;
-const wt3 = [new Uint8Array()] as const;
+const wt3 = [Uint8Array.of()] as const;
 const wt4 = [[1, 2, 3]] as const;
 const wt5 = [['1', '2', '3']] as const;
-const wt6 = [new Uint32Array()] as const;
+const wt6 = [Uint32Array.of()] as const;
 const wt7 = [true] as const;
 
 assertType<[1]>(1 as any as P.Writable<typeof wt1>);

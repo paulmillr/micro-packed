@@ -1,6 +1,6 @@
-import { deepStrictEqual, throws } from 'node:assert';
 import * as fc from 'fast-check';
 import { describe, should } from 'micro-should';
+import { deepStrictEqual, throws } from 'node:assert';
 import { hex, utils } from '../lib/esm/index.js';
 import { getTypeTests } from './utils.js';
 
@@ -47,7 +47,7 @@ describe('utils', () => {
     const aa = Uint8Array.from([a]);
     const bb = Uint8Array.from([b]);
     const cc = Uint8Array.from([c]);
-    deepStrictEqual(concatBytes(), new Uint8Array());
+    deepStrictEqual(concatBytes(), Uint8Array.of());
     deepStrictEqual(concatBytes(aa, bb), Uint8Array.from([a, b]));
     deepStrictEqual(concatBytes(aa, bb, cc), Uint8Array.from([a, b, c]));
     for (let [v, repr] of getTypeTests()) {
