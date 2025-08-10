@@ -1,6 +1,6 @@
-import { deepStrictEqual, throws } from 'node:assert';
 import { describe, should } from 'micro-should';
-import * as P from '../lib/esm/index.js';
+import { deepStrictEqual } from 'node:assert';
+import * as P from '../src/index.ts';
 
 const KB = 1024;
 const MB = 1024 * KB;

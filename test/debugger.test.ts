@@ -1,8 +1,8 @@
-import { throws } from 'node:assert';
-import { should } from 'micro-should';
 import { hex } from '@scure/base';
-import * as P from '../lib/esm/index.js';
-import * as PD from '../lib/esm/debugger.js';
+import { should } from 'micro-should';
+import { throws } from 'node:assert';
+import * as PD from '../src/debugger.ts';
+import * as P from '../src/index.ts';
 
 const testStruct = P.struct({
   a: P.U32LE,

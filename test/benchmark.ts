@@ -1,5 +1,5 @@
 import mark from 'micro-bmark';
-import * as P from 'micro-packed';
+import * as P from '../src/index.ts';
 
 const SAMPLES = 1000;
 
@@ -29,8 +29,8 @@ const STRUCTS = {
 
 export async function main() {
   const encoded = P.U8.encode(5);
-  await mark('basic encode', 10_000_000, () => P.U8.encode(5));
-  await mark('basic decode', 10_000_000, () => P.U8.decode(encoded));
+  await mark('basic encode', () => P.U8.encode(5));
+  await mark('basic decode', () => P.U8.decode(encoded));
   for (let [name, { coder, value }] of Object.entries(STRUCTS)) {
     const encoded = coder.encode(value);
     // await compare(name, name === 'complex' ? 1_000_000 : SAMPLES, {
@@ -42,8 +42,4 @@ export async function main() {
   // butils.logMem();
 }
 
-// ESM is broken.
-import url from 'node:url';
-if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
-  main();
-}
+main();

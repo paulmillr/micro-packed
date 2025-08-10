@@ -1,8 +1,8 @@
 import { hex } from '@scure/base';
 import { describe, should } from 'micro-should';
-import { deepStrictEqual, throws } from 'node:assert';
-import * as PD from '../lib/esm/debugger.js';
-import * as P from '../lib/esm/index.js';
+import { deepStrictEqual as eql, throws } from 'node:assert';
+import * as PD from '../src/debugger.ts';
+import * as P from '../src/index.ts';
 
 const Reader = P._TEST._Reader;
 const Writer = P._TEST._Writer;
@@ -13,12 +13,11 @@ const test = (name, v) => {
     should('correct', () => {
       for (const [expVal, expHex] of v.correct || []) {
         const encoded = v.p.encode(expVal);
-        deepStrictEqual(hex.encode(encoded), expHex, 'encode');
-        deepStrictEqual(v.p.decode(encoded), expVal, 'decode(encode)');
-        // console.log('ENC', encoded);
+        eql(hex.encode(encoded), expHex, 'encode');
+        eql(v.p.decode(encoded), expVal, 'decode(encode)');
         const decoded = v.p.decode(hex.decode(expHex));
-        deepStrictEqual(decoded, expVal, 'decode');
-        deepStrictEqual(hex.encode(v.p.encode(decoded)), expHex, 'encode(decode)');
+        eql(decoded, expVal, 'decode');
+        eql(hex.encode(v.p.encode(decoded)), expHex, 'encode(decode)');
       }
     });
     should('err values', () => {
@@ -186,18 +185,18 @@ describe('primitives', () => {
     VarU64.decode(new Uint8Array(8));
     throws(() => VarU64.decode(new Uint8Array(9))); // left more than needed
     // encode
-    deepStrictEqual(VarU64.encode(0n), new Uint8Array([]));
-    deepStrictEqual(VarU64.encode(10n), new Uint8Array([10]));
-    deepStrictEqual(VarU64.encode(300n), new Uint8Array([1, 44]));
-    deepStrictEqual(
+    eql(VarU64.encode(0n), new Uint8Array([]));
+    eql(VarU64.encode(10n), new Uint8Array([10]));
+    eql(VarU64.encode(300n), new Uint8Array([1, 44]));
+    eql(
       VarU64.encode(2n ** 64n - 1n),
       new Uint8Array([255, 255, 255, 255, 255, 255, 255, 255])
     );
     throws(() => VarU64.encode(2n ** 64n));
     // decode
-    deepStrictEqual(VarU64.decode(VarU64.encode(10n)), 10n);
-    deepStrictEqual(VarU64.decode(VarU64.encode(300n)), 300n);
-    deepStrictEqual(VarU64.decode(VarU64.encode(2n ** 64n - 1n)), 2n ** 64n - 1n);
+    eql(VarU64.decode(VarU64.encode(10n)), 10n);
+    eql(VarU64.decode(VarU64.encode(300n)), 300n);
+    eql(VarU64.decode(VarU64.encode(2n ** 64n - 1n)), 2n ** 64n - 1n);
   });
   should('number typecheck', () => {
     throws(() => P.U64BE.encode(1.01));
@@ -277,26 +276,26 @@ describe('structures', () => {
     const prefixed2 = P.prefix(P.U16BE, P.array(null, P.U16BE));
     for (const t of [[], [1], [1, 2], [1, 2, 3], [1, 2, 3, 4]]) {
       const encoded = prefixed.encode(t);
-      deepStrictEqual(encoded, arr.encode(t));
-      deepStrictEqual(prefixed.decode(encoded), t);
-      deepStrictEqual(arr.decode(encoded), t);
-      deepStrictEqual(prefixed2.decode(prefixed2.encode(t)), t);
+      eql(encoded, arr.encode(t));
+      eql(prefixed.decode(encoded), t);
+      eql(arr.decode(encoded), t);
+      eql(prefixed2.decode(prefixed2.encode(t)), t);
     }
     // Same as before , but size = 2*arr size
-    deepStrictEqual(prefixed2.encode([]), new Uint8Array([0, 0]));
-    deepStrictEqual(prefixed2.encode([1]), new Uint8Array([0, 2, 0, 1]));
-    deepStrictEqual(prefixed2.encode([1, 2]), new Uint8Array([0, 4, 0, 1, 0, 2]));
-    deepStrictEqual(prefixed2.encode([1, 2, 3]), new Uint8Array([0, 6, 0, 1, 0, 2, 0, 3]));
+    eql(prefixed2.encode([]), new Uint8Array([0, 0]));
+    eql(prefixed2.encode([1]), new Uint8Array([0, 2, 0, 1]));
+    eql(prefixed2.encode([1, 2]), new Uint8Array([0, 4, 0, 1, 0, 2]));
+    eql(prefixed2.encode([1, 2, 3]), new Uint8Array([0, 6, 0, 1, 0, 2, 0, 3]));
   });
 
   describe('array', () => {
     should('basic', () => {
       let arr = P.array(P.U8, P.U32LE);
-      deepStrictEqual(
+      eql(
         arr.encode([1234, 5678, 9101112]),
         new Uint8Array([3, 210, 4, 0, 0, 46, 22, 0, 0, 56, 223, 138, 0])
       );
-      deepStrictEqual(arr.decode(arr.encode([1234, 5678, 9101112])), [1234, 5678, 9101112]);
+      eql(arr.decode(arr.encode([1234, 5678, 9101112])), [1234, 5678, 9101112]);
       const big = new Array(256).fill(0);
       throws(() => arr.encode(big));
       arr.encode(big.slice(0, 255));
@@ -304,11 +303,11 @@ describe('structures', () => {
     should('sz=null', () => {
       const a = P.array(null, P.U16BE);
       const data = [1, 2, 3, 4, 5, 6, 7];
-      deepStrictEqual(a.decode(a.encode(data)), data);
-      deepStrictEqual(a.encode(data), new Uint8Array([0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7]));
+      eql(a.decode(a.encode(data)), data);
+      eql(a.encode(data), new Uint8Array([0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7]));
       // Array of unknown size should be last element or it will eat everything
       const t = P.tuple([a, a]);
-      deepStrictEqual(
+      eql(
         t.decode(
           t.encode([
             [1, 2, 3],
@@ -319,16 +318,16 @@ describe('structures', () => {
       );
       // But what if next elm is smaller than array elm, it still should work
       const t2 = P.tuple([a, P.U8]);
-      deepStrictEqual(t2.decode(t2.encode([[1, 2, 3], 4])), [[1, 2, 3], 4]);
+      eql(t2.decode(t2.encode([[1, 2, 3], 4])), [[1, 2, 3], 4]);
       // But should still fail if there some bytes left
       throws(() => a.decode(t2.encode([[1, 2, 3], 4])));
       // But if last elm has same size as inner element it should be processed as is
       const t3 = P.tuple([a, P.U16BE]);
-      deepStrictEqual(a.decode(t3.encode([[1, 2, 3], 4])), [1, 2, 3, 4]);
+      eql(a.decode(t3.encode([[1, 2, 3], 4])), [1, 2, 3, 4]);
       // Prefixed unkown size arrays works as is
       const prefixed = P.prefix(P.U16BE, a);
       const t4 = P.tuple([prefixed, prefixed]);
-      deepStrictEqual(
+      eql(
         t4.decode(
           t4.encode([
             [1, 2, 3],
@@ -348,17 +347,17 @@ describe('structures', () => {
       throws(() => a.encode([1]));
       throws(() => a.encode([1, 2, 3, 4, 5]));
       const data = [1, 2, 3, 4];
-      deepStrictEqual(a.decode(a.encode(data)), data);
-      deepStrictEqual(a.encode(data), new Uint8Array([0, 1, 0, 2, 0, 3, 0, 4]));
+      eql(a.decode(a.encode(data)), data);
+      eql(a.encode(data), new Uint8Array([0, 1, 0, 2, 0, 3, 0, 4]));
     });
 
     should('sz=dynamic number', () => {
       const a = P.array(P.U16LE, P.U16BE);
       // Works for different sizes
-      deepStrictEqual(a.decode(a.encode([1])), [1]);
-      deepStrictEqual(a.decode(a.encode([1, 2])), [1, 2]);
-      deepStrictEqual(a.decode(a.encode([1, 2, 3])), [1, 2, 3]);
-      deepStrictEqual(a.encode([1, 2, 3]), new Uint8Array([3, 0, 0, 1, 0, 2, 0, 3]));
+      eql(a.decode(a.encode([1])), [1]);
+      eql(a.decode(a.encode([1, 2])), [1, 2]);
+      eql(a.decode(a.encode([1, 2, 3])), [1, 2, 3]);
+      eql(a.encode([1, 2, 3]), new Uint8Array([3, 0, 0, 1, 0, 2, 0, 3]));
     });
 
     should('sz=path', () => {
@@ -369,11 +368,11 @@ describe('structures', () => {
       // Throws on argument and array size mismatch
       throws(() => a.encode({ len: 1, arr: [1, 2] }));
       // Works for different sizes
-      deepStrictEqual(a.decode(a.encode({ len: 1, arr: [1] })), { len: 1, arr: [1] });
-      deepStrictEqual(a.decode(a.encode({ len: 2, arr: [1, 2] })), { len: 2, arr: [1, 2] });
-      deepStrictEqual(a.decode(a.encode({ len: 3, arr: [1, 2, 3] })), { len: 3, arr: [1, 2, 3] });
+      eql(a.decode(a.encode({ len: 1, arr: [1] })), { len: 1, arr: [1] });
+      eql(a.decode(a.encode({ len: 2, arr: [1, 2] })), { len: 2, arr: [1, 2] });
+      eql(a.decode(a.encode({ len: 3, arr: [1, 2, 3] })), { len: 3, arr: [1, 2, 3] });
       // Same as array(sz=fixed number encoding)
-      deepStrictEqual(
+      eql(
         a.encode({ len: 3, arr: [1, 2, 3] }),
         P.array(P.U16LE, P.U16BE).encode([1, 2, 3])
       );
@@ -382,9 +381,9 @@ describe('structures', () => {
     should('sz=bytes', () => {
       const a = P.array(new Uint8Array([0]), P.U16LE);
       // basic encode/decode
-      deepStrictEqual(a.decode(a.encode([1, 2, 3])), [1, 2, 3]);
+      eql(a.decode(a.encode([1, 2, 3])), [1, 2, 3]);
       // NOTE: LE here becase 0 is terminator
-      deepStrictEqual(a.encode([1, 2, 3]), new Uint8Array([1, 0, 2, 0, 3, 0, 0]));
+      eql(a.encode([1, 2, 3]), new Uint8Array([1, 0, 2, 0, 3, 0, 0]));
       // No terminator!
       throws(() => a.decode(new Uint8Array([1, 0])));
       // Early terminator
@@ -394,9 +393,8 @@ describe('structures', () => {
       // Different separator, so we can encode zero
       const a2 = P.array(new Uint8Array([1, 2, 3]), P.U16LE);
 
-      console.log('OLOLO', a2.encode([0, 1, 2]));
-      deepStrictEqual(a2.decode(a2.encode([0, 1, 2])), [0, 1, 2]);
-      deepStrictEqual(a2.encode([0, 1, 2]), new Uint8Array([0, 0, 1, 0, 2, 0, 1, 2, 3]));
+      eql(a2.decode(a2.encode([0, 1, 2])), [0, 1, 2]);
+      eql(a2.encode([0, 1, 2]), new Uint8Array([0, 0, 1, 0, 2, 0, 1, 2, 3]));
       // corrupted terminator
       throws(() => a.decode(new Uint8Array([1, 0, 2, 0, 1, 2])));
     });
@@ -405,8 +403,8 @@ describe('structures', () => {
     should('sz=null', () => {
       const a = P.bytes(null);
       const data = new Uint8Array([1, 2, 3]);
-      deepStrictEqual(a.decode(a.encode(data)), data);
-      deepStrictEqual(a.encode(data), new Uint8Array([1, 2, 3]));
+      eql(a.decode(a.encode(data)), data);
+      eql(a.encode(data), new Uint8Array([1, 2, 3]));
     });
 
     should('sz=fixed number', () => {
@@ -415,17 +413,17 @@ describe('structures', () => {
       throws(() => a.encode(new Uint8Array([1])));
       throws(() => a.encode(new Uint8Array([1, 2, 3, 4, 5])));
       const data = new Uint8Array([1, 2, 3, 4]);
-      deepStrictEqual(a.decode(a.encode(data)), data);
-      deepStrictEqual(a.encode(data), new Uint8Array([1, 2, 3, 4]));
+      eql(a.decode(a.encode(data)), data);
+      eql(a.encode(data), new Uint8Array([1, 2, 3, 4]));
     });
 
     should('sz=dynamic number', () => {
       const a = P.bytes(P.U16LE);
       // Works for different sizes
-      deepStrictEqual(a.decode(a.encode(new Uint8Array([1]))), new Uint8Array([1]));
-      deepStrictEqual(a.decode(a.encode(new Uint8Array([1, 2]))), new Uint8Array([1, 2]));
-      deepStrictEqual(a.decode(a.encode(new Uint8Array([1, 2, 3]))), new Uint8Array([1, 2, 3]));
-      deepStrictEqual(a.encode(new Uint8Array([1, 2, 3])), new Uint8Array([3, 0, 1, 2, 3]));
+      eql(a.decode(a.encode(new Uint8Array([1]))), new Uint8Array([1]));
+      eql(a.decode(a.encode(new Uint8Array([1, 2]))), new Uint8Array([1, 2]));
+      eql(a.decode(a.encode(new Uint8Array([1, 2, 3]))), new Uint8Array([1, 2, 3]));
+      eql(a.encode(new Uint8Array([1, 2, 3])), new Uint8Array([3, 0, 1, 2, 3]));
     });
 
     should('sz=path', () => {
@@ -436,20 +434,20 @@ describe('structures', () => {
       // Throws on argument and array size mismatch
       throws(() => a.encode({ len: 1, arr: new Uint8Array([1, 2]) }));
       // Works for different sizes
-      deepStrictEqual(a.decode(a.encode({ len: 1, arr: new Uint8Array([1]) })), {
+      eql(a.decode(a.encode({ len: 1, arr: new Uint8Array([1]) })), {
         len: 1,
         arr: new Uint8Array([1]),
       });
-      deepStrictEqual(a.decode(a.encode({ len: 2, arr: new Uint8Array([1, 2]) })), {
+      eql(a.decode(a.encode({ len: 2, arr: new Uint8Array([1, 2]) })), {
         len: 2,
         arr: new Uint8Array([1, 2]),
       });
-      deepStrictEqual(a.decode(a.encode({ len: 3, arr: new Uint8Array([1, 2, 3]) })), {
+      eql(a.decode(a.encode({ len: 3, arr: new Uint8Array([1, 2, 3]) })), {
         len: 3,
         arr: new Uint8Array([1, 2, 3]),
       });
       // Same as bytes(sz=fixed number encoding)
-      deepStrictEqual(
+      eql(
         a.encode({ len: 3, arr: new Uint8Array([1, 2, 3]) }),
         P.bytes(P.U16LE).encode(new Uint8Array([1, 2, 3]))
       );
@@ -458,26 +456,26 @@ describe('structures', () => {
     should('sz=bytes', () => {
       const a = P.bytes(new Uint8Array([0]));
       // basic encode/decode
-      deepStrictEqual(a.decode(a.encode(new Uint8Array([1, 2, 3]))), new Uint8Array([1, 2, 3]));
+      eql(a.decode(a.encode(new Uint8Array([1, 2, 3]))), new Uint8Array([1, 2, 3]));
       // NOTE: LE here becase 0 is terminator
-      deepStrictEqual(a.encode(new Uint8Array([1, 2, 3])), new Uint8Array([1, 2, 3, 0]));
+      eql(a.encode(new Uint8Array([1, 2, 3])), new Uint8Array([1, 2, 3, 0]));
       // No terminator!
       throws(() => a.decode(new Uint8Array([1, 2])));
-      deepStrictEqual(a.decode(new Uint8Array([1, 2, 0])), new Uint8Array([1, 2]));
+      eql(a.decode(new Uint8Array([1, 2, 0])), new Uint8Array([1, 2]));
       // Early terminator
       throws(() => a.decode(new Uint8Array([1, 0, 1])));
       // Different separator, so we can encode zero
       const a2 = P.bytes(new Uint8Array([9, 8, 7]));
-      deepStrictEqual(a2.decode(a2.encode(new Uint8Array([0, 1, 2]))), new Uint8Array([0, 1, 2]));
-      deepStrictEqual(a2.encode(new Uint8Array([0, 1, 2])), new Uint8Array([0, 1, 2, 9, 8, 7]));
+      eql(a2.decode(a2.encode(new Uint8Array([0, 1, 2]))), new Uint8Array([0, 1, 2]));
+      eql(a2.encode(new Uint8Array([0, 1, 2])), new Uint8Array([0, 1, 2, 9, 8, 7]));
       // // corrupted terminator
       throws(() => a.decode(new Uint8Array([1, 2, 3, 9, 8])));
     });
   });
 
   should('cstring', () => {
-    deepStrictEqual(P.cstring.encode('test'), new Uint8Array([116, 101, 115, 116, 0]));
-    deepStrictEqual(P.cstring.decode(P.cstring.encode('test')), 'test');
+    eql(P.cstring.encode('test'), new Uint8Array([116, 101, 115, 116, 0]));
+    eql(P.cstring.decode(P.cstring.encode('test')), 'test');
     // Early terminator
     throws(() => P.cstring.decode(new Uint8Array([116, 101, 0, 115, 116])));
   });
@@ -521,8 +519,8 @@ describe('structures', () => {
       customField: 'test',
       deep: { test: 'tmp', test2: 12354 },
     };
-    deepStrictEqual(t.decode(t.encode(data)), data);
-    deepStrictEqual(
+    eql(t.decode(t.encode(data)), data);
+    eql(
       log.map((i) => JSON.parse(i)),
       [
         {
@@ -898,12 +896,12 @@ describe('structures', () => {
         sub1: P.struct({ someLen: P.U8 }),
         sub2: P.struct({ str: P.string('../sub1/someLen') }),
       });
-      deepStrictEqual(
+      eql(
         s1.encode({ sub1: { someLen: 5 }, f2: 'hello' }),
         new Uint8Array([5, 104, 101, 108, 108, 111])
       );
       throws(() => s1.encode({ sub1: { someLen: 6 }, f2: 'hello' }));
-      deepStrictEqual(
+      eql(
         s2.encode({ sub1: { someLen: 5 }, sub2: { str: 'hello' } }),
         new Uint8Array([5, 104, 101, 108, 108, 111])
       );
@@ -912,19 +910,19 @@ describe('structures', () => {
     should('flag', () => {
       const f = P.flag(new Uint8Array([0x1, 0x2, 0x3]));
       const f2 = P.flag(new Uint8Array([0x1, 0x2, 0x3]), true);
-      deepStrictEqual(f.encode(true), new Uint8Array([0x1, 0x2, 0x3]));
-      deepStrictEqual(f.encode(false), new Uint8Array([]));
-      deepStrictEqual(f.decode(new Uint8Array([0x1, 0x2, 0x3])), true, 'flag true');
-      deepStrictEqual(f.decode(new Uint8Array([])), false, 'flag false');
+      eql(f.encode(true), new Uint8Array([0x1, 0x2, 0x3]));
+      eql(f.encode(false), new Uint8Array([]));
+      eql(f.decode(new Uint8Array([0x1, 0x2, 0x3])), true, 'flag true');
+      eql(f.decode(new Uint8Array([])), false, 'flag false');
       throws(() => f.decode(new Uint8Array([0x1, 0x2])));
       throws(() => f.decode(new Uint8Array([0x1])));
       throws(() => f.decode(new Uint8Array([0x1, 0x2, 0x4])));
 
-      deepStrictEqual(f2.encode(false), new Uint8Array([0x1, 0x2, 0x3]));
-      deepStrictEqual(f2.encode(true), new Uint8Array([]));
+      eql(f2.encode(false), new Uint8Array([0x1, 0x2, 0x3]));
+      eql(f2.encode(true), new Uint8Array([]));
 
-      deepStrictEqual(f2.decode(new Uint8Array([0x1, 0x2, 0x3])), false, 'flag true xor');
-      deepStrictEqual(f2.decode(new Uint8Array([])), true, 'flag false xor');
+      eql(f2.decode(new Uint8Array([0x1, 0x2, 0x3])), false, 'flag true xor');
+      eql(f2.decode(new Uint8Array([])), true, 'flag false xor');
       throws(() => f2.decode(new Uint8Array([0x1, 0x2])));
       throws(() => f2.decode(new Uint8Array([0x1])));
       throws(() => f2.decode(new Uint8Array([0x1, 0x2, 0x4])));
@@ -932,8 +930,8 @@ describe('structures', () => {
 
     should('flagged', () => {
       const s = P.struct({ f: P.flag(new Uint8Array([0x0, 0x1])), f2: P.flagged('f', P.U32BE) });
-      deepStrictEqual(s.encode({ f2: 1234 }), new Uint8Array([]));
-      deepStrictEqual(s.encode({ f: true, f2: 1234 }), new Uint8Array([0, 1, 0, 0, 4, 210]));
+      eql(s.encode({ f2: 1234 }), new Uint8Array([]));
+      eql(s.encode({ f: true, f2: 1234 }), new Uint8Array([0, 1, 0, 0, 4, 210]));
       // Flag but no data
       throws(() => s.encode({ f: true }));
       const s2 = P.struct({
@@ -943,26 +941,26 @@ describe('structures', () => {
 
       // If def=true -> encode default value when flag is disabled
       // TODO: do we need that at all? Cannot remember use-case where default option was useful.
-      deepStrictEqual(s2.encode({ f2: 1234 }), new Uint8Array([0, 0, 0, 123]));
-      deepStrictEqual(s2.encode({ f: true, f2: 1234 }), new Uint8Array([0, 1, 0, 0, 4, 210]));
-      deepStrictEqual(s2.decode(new Uint8Array([0, 1, 0, 0, 4, 210])), { f: true, f2: 1234 });
-      deepStrictEqual(s2.decode(new Uint8Array([0, 0, 0, 123])), { f: false, f2: undefined });
+      eql(s2.encode({ f2: 1234 }), new Uint8Array([0, 0, 0, 123]));
+      eql(s2.encode({ f: true, f2: 1234 }), new Uint8Array([0, 1, 0, 0, 4, 210]));
+      eql(s2.decode(new Uint8Array([0, 1, 0, 0, 4, 210])), { f: true, f2: 1234 });
+      eql(s2.decode(new Uint8Array([0, 0, 0, 123])), { f: false, f2: undefined });
 
       // Decode only if there is flag. No flag -> return undefined
       const s3 = P.flagged(P.flag(new Uint8Array([0x0, 0x1])), P.U32BE);
-      deepStrictEqual(s3.encode(123), new Uint8Array([0x0, 0x1, 0x0, 0x0, 0x0, 123]));
-      deepStrictEqual(s3.encode(undefined), new Uint8Array([]));
-      deepStrictEqual(s3.decode(new Uint8Array([0x0, 0x1, 0x0, 0x0, 0x0, 123])), 123);
-      deepStrictEqual(s3.decode(new Uint8Array([])), undefined);
+      eql(s3.encode(123), new Uint8Array([0x0, 0x1, 0x0, 0x0, 0x0, 123]));
+      eql(s3.encode(undefined), new Uint8Array([]));
+      eql(s3.decode(new Uint8Array([0x0, 0x1, 0x0, 0x0, 0x0, 123])), 123);
+      eql(s3.decode(new Uint8Array([])), undefined);
       throws(() => s3.decode(new Uint8Array([0x1])));
       throws(() => s3.decode(new Uint8Array([0x1, 0x2, 0x3, 0x4, 0x5, 0x6])));
       // Decode only if thre is no flag. If flag -> return undefined
       const s4 = P.flagged(P.flag(new Uint8Array([0x0, 0x1]), true), P.U32BE);
-      deepStrictEqual(s4.encode(123), new Uint8Array([0x0, 0x0, 0x0, 123]));
-      deepStrictEqual(s4.encode(undefined), new Uint8Array([0x0, 0x1]));
-      deepStrictEqual(s4.decode(new Uint8Array([0x0, 0x1])), undefined);
+      eql(s4.encode(123), new Uint8Array([0x0, 0x0, 0x0, 123]));
+      eql(s4.encode(undefined), new Uint8Array([0x0, 0x1]));
+      eql(s4.decode(new Uint8Array([0x0, 0x1])), undefined);
       // Decode as is, if there is no flag
-      deepStrictEqual(s4.decode(new Uint8Array([0x0, 0x0, 0x0, 0x4])), 0x4);
+      eql(s4.decode(new Uint8Array([0x0, 0x0, 0x0, 0x4])), 0x4);
       throws(() => s4.decode(new Uint8Array([0x0, 0x1, 0x2])));
     });
     describe('pointer', () => {
@@ -1038,9 +1036,9 @@ describe('structures', () => {
   describe('utils', () => {
     should('map', () => {
       const e = P.map(P.U8, { test: 5, other: 9 });
-      deepStrictEqual(e.encode('test'), new Uint8Array([5]));
-      deepStrictEqual(e.decode(e.encode('test')), 'test');
-      deepStrictEqual(e.decode(e.encode('other')), 'other');
+      eql(e.encode('test'), new Uint8Array([5]));
+      eql(e.decode(e.encode('test')), 'test');
+      eql(e.decode(e.encode('other')), 'other');
       throws(() => e.encode('anything'));
       throws(() => e.decode(new Uint8Array([1])));
     });
@@ -1048,14 +1046,14 @@ describe('structures', () => {
     should('hex', () => {
       const h = P.apply(P.bytes(P.U16BE), hex);
       const data = '01020304';
-      deepStrictEqual(h.decode(h.encode(data)), data);
+      eql(h.decode(h.encode(data)), data);
     });
 
     should('dict', () => {
       const coder = P.array(P.U16BE, P.tuple([P.cstring, P.U32LE]));
       const h = P.apply(coder, P.coders.dict());
       const data = { lol: 1, blah: 2 };
-      deepStrictEqual(h.decode(h.encode(data)), data);
+      eql(h.decode(h.encode(data)), data);
     });
 
     should('lazy', () => {
@@ -1077,7 +1075,7 @@ describe('structures', () => {
           ],
         },
       ];
-      for (const c of CASES) deepStrictEqual(tree.decode(tree.encode(c)), c);
+      for (const c of CASES) eql(tree.decode(tree.encode(c)), c);
     });
     should('validate', () => {
       let t = (n) => {
@@ -1085,8 +1083,8 @@ describe('structures', () => {
         return n;
       };
       const c = P.validate(P.U8, t);
-      deepStrictEqual(c.decode(c.encode(1)), 1);
-      deepStrictEqual(c.decode(c.encode(100)), 100);
+      eql(c.decode(c.encode(1)), 1);
+      eql(c.decode(c.encode(100)), 100);
       throws(() => c.encode(101));
       throws(() => c.decode(new Uint8Array([101])));
     });
@@ -1108,31 +1106,31 @@ describe('structures', () => {
         num: 123,
         child: { a: true, b: 123n },
       };
-      deepStrictEqual(s.decode(s.encode(data)), data);
+      eql(s.decode(s.encode(data)), data);
     });
     should('isPlainObject', () => {
-      deepStrictEqual(P.utils.isPlainObject({}), true);
-      deepStrictEqual(P.utils.isPlainObject(null), false);
-      deepStrictEqual(P.utils.isPlainObject([]), false);
-      deepStrictEqual(P.utils.isPlainObject(new Uint8Array([])), false);
+      eql(P.utils.isPlainObject({}), true);
+      eql(P.utils.isPlainObject(null), false);
+      eql(P.utils.isPlainObject([]), false);
+      eql(P.utils.isPlainObject(new Uint8Array([])), false);
     });
   });
 });
 
 describe('coders', () => {
   should('number', () => {
-    deepStrictEqual(P.coders.numberBigint.encode(1000n), 1000);
-    deepStrictEqual(P.coders.numberBigint.encode(9007199254740991n), 9007199254740991);
+    eql(P.coders.numberBigint.encode(1000n), 1000);
+    eql(P.coders.numberBigint.encode(9007199254740991n), 9007199254740991);
     throws(() => P.coders.numberBigint.encode(9007199254740992n));
   });
 
   should('decimal', () => {
     const d8 = P.coders.decimal(8);
-    deepStrictEqual(d8.decode('6.30880845'), 630880845n);
-    deepStrictEqual(d8.decode('6.308'), 630800000n);
-    deepStrictEqual(d8.decode('6.00008'), 600008000n);
-    deepStrictEqual(d8.decode('10'), 1000000000n);
-    deepStrictEqual(d8.decode('200'), 20000000000n);
+    eql(d8.decode('6.30880845'), 630880845n);
+    eql(d8.decode('6.308'), 630800000n);
+    eql(d8.decode('6.00008'), 600008000n);
+    eql(d8.decode('10'), 1000000000n);
+    eql(d8.decode('200'), 20000000000n);
     const cases = [
       '6.30880845',
       '6.308',
@@ -1157,15 +1155,15 @@ describe('coders', () => {
       '-19.0001',
       '-99999999',
     ];
-    for (let c of cases) deepStrictEqual(d8.encode(d8.decode(c)), c);
+    for (let c of cases) eql(d8.encode(d8.decode(c)), c);
     const d2 = P.coders.decimal(2, true);
     // Round number if precision is smaller than fraction part length
-    deepStrictEqual(d2.decode('22.11111111111111111'), 2211n);
-    deepStrictEqual(d2.decode('222222.11111111111111111'), 22222211n);
-    deepStrictEqual(d2.encode(d2.decode('22.1111')), '22.11');
-    deepStrictEqual(d2.encode(d2.decode('22.9999')), '22.99');
+    eql(d2.decode('22.11111111111111111'), 2211n);
+    eql(d2.decode('222222.11111111111111111'), 22222211n);
+    eql(d2.encode(d2.decode('22.1111')), '22.11');
+    eql(d2.encode(d2.decode('22.9999')), '22.99');
     // Doesn't affect integer part
-    deepStrictEqual(
+    eql(
       d2.encode(d2.decode('222222222222222222222222222.9999')),
       '222222222222222222222222222.99'
     );
@@ -1183,16 +1181,16 @@ describe('coders', () => {
       '1.9999999',
       '1000000000.000000001',
     ];
-    for (const t of ok) deepStrictEqual(i64.decode(i64.encode(t)), t);
-    for (const t of ok) deepStrictEqual(i64.decode(i64.encode(`-${t}`)), `-${t}`);
-    deepStrictEqual(i64.decode(i64.encode('0.0')), '0');
-    deepStrictEqual(i64.decode(i64.encode('0')), '0');
-    deepStrictEqual(i64.decode(i64.encode('10.0')), '10');
-    deepStrictEqual(i64.decode(i64.encode('1.0')), '1');
+    for (const t of ok) eql(i64.decode(i64.encode(t)), t);
+    for (const t of ok) eql(i64.decode(i64.encode(`-${t}`)), `-${t}`);
+    eql(i64.decode(i64.encode('0.0')), '0');
+    eql(i64.decode(i64.encode('0')), '0');
+    eql(i64.decode(i64.encode('10.0')), '10');
+    eql(i64.decode(i64.encode('1.0')), '1');
     // Input can be from user, so this is ok, but '-0' is not.
-    deepStrictEqual(i64.decode(i64.encode('1000000000.000000000')), '1000000000');
-    deepStrictEqual(i64.decode(i64.encode('1000000000.0000000000')), '1000000000');
-    deepStrictEqual(
+    eql(i64.decode(i64.encode('1000000000.000000000')), '1000000000');
+    eql(i64.decode(i64.encode('1000000000.0000000000')), '1000000000');
+    eql(
       i64.decode(i64.encode('1000000000.0000000000000000000000000000')),
       '1000000000'
     );
@@ -1239,13 +1237,13 @@ describe('coders', () => {
       throws(() => i64.encode(t), `index ${i}`);
     }
     const d5 = P.coders.decimal(5);
-    deepStrictEqual(d5.encode(123n), '0.00123');
-    deepStrictEqual(d5.encode(-123n), '-0.00123');
+    eql(d5.encode(123n), '0.00123');
+    eql(d5.encode(-123n), '-0.00123');
     const d0 = P.coders.decimal(0);
     throws(() => P.coders.decimal(-1));
-    deepStrictEqual(d0.encode(123n), '123');
-    deepStrictEqual(d0.encode(-123n), '-123');
-    deepStrictEqual(d0.decode('123.0'), 123n);
+    eql(d0.encode(123n), '123');
+    eql(d0.encode(-123n), '-123');
+    eql(d0.decode('123.0'), 123n);
     throws(() => d0.decode('123.1'));
     throws(() => d0.decode('1.1'));
   });
@@ -1297,17 +1295,17 @@ describe('coders', () => {
       },
     };
     // M1
-    deepStrictEqual(m.encode({ type: 't1' }), 1);
-    deepStrictEqual(m.decode(1), { type: 't1' });
-    deepStrictEqual(m.decode(m.encode({ type: 't1' })), { type: 't1' });
+    eql(m.encode({ type: 't1' }), 1);
+    eql(m.decode(1), { type: 't1' });
+    eql(m.decode(m.encode({ type: 't1' })), { type: 't1' });
     // M2
-    deepStrictEqual(m.encode({ type: 't2' }), 2);
-    deepStrictEqual(m.decode(2), { type: 't2' });
-    deepStrictEqual(m.decode(m.encode({ type: 't2' })), { type: 't2' });
+    eql(m.encode({ type: 't2' }), 2);
+    eql(m.decode(2), { type: 't2' });
+    eql(m.decode(m.encode({ type: 't2' })), { type: 't2' });
     // M3
-    deepStrictEqual(m.encode({ type: 't3' }), 3);
-    deepStrictEqual(m.decode(3), { type: 't3' });
-    deepStrictEqual(m.decode(m.encode({ type: 't3' })), { type: 't3' });
+    eql(m.encode({ type: 't3' }), 3);
+    eql(m.decode(3), { type: 't3' });
+    eql(m.decode(m.encode({ type: 't3' })), { type: 't3' });
     throws(() => m.encode({ type: 't4' }));
     throws(() => m.decode(4));
   });
@@ -1318,45 +1316,45 @@ describe('utils', () => {
     const s0 = P.array(0, P.U32LE);
     const s1 = P.array(1, P.U8);
     const s4 = P.U32LE;
-    deepStrictEqual(s0.size, 0);
-    deepStrictEqual(s1.size, 1);
-    deepStrictEqual(s4.size, 4);
-    deepStrictEqual(P.tuple([s0]).size, 0);
-    deepStrictEqual(P.tuple([s1]).size, 1);
-    deepStrictEqual(P.tuple([s1, s0, s1, s0, s1]).size, 3);
-    deepStrictEqual(P.array(3, s1).size, 3);
-    deepStrictEqual(P.array(3, s4).size, 12);
+    eql(s0.size, 0);
+    eql(s1.size, 1);
+    eql(s4.size, 4);
+    eql(P.tuple([s0]).size, 0);
+    eql(P.tuple([s1]).size, 1);
+    eql(P.tuple([s1, s0, s1, s0, s1]).size, 3);
+    eql(P.array(3, s1).size, 3);
+    eql(P.array(3, s4).size, 12);
     // Size of dynamic arrays is undefined
-    deepStrictEqual(P.array(null, s4).size, undefined);
-    deepStrictEqual(P.array(P.U8, s4).size, undefined);
-    deepStrictEqual(P.struct({ f1: s0 }).size, 0);
-    deepStrictEqual(P.struct({ f1: s1 }).size, 1);
-    deepStrictEqual(P.struct({ f1: s1, f2: s0, f3: s1, f4: s0, f5: s1 }).size, 3);
+    eql(P.array(null, s4).size, undefined);
+    eql(P.array(P.U8, s4).size, undefined);
+    eql(P.struct({ f1: s0 }).size, 0);
+    eql(P.struct({ f1: s1 }).size, 1);
+    eql(P.struct({ f1: s1, f2: s0, f3: s1, f4: s0, f5: s1 }).size, 3);
   });
   describe('Reader', () => {
     describe('bits', () => {
       should('basic', () => {
         const u = new Reader(new Uint8Array([152, 0]));
-        deepStrictEqual([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 0, 6, 0]);
-        deepStrictEqual(u.byte(), 0);
-        deepStrictEqual(u.isEnd(), true);
+        eql([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 0, 6, 0]);
+        eql(u.byte(), 0);
+        eql(u.isEnd(), true);
       });
 
       should('u32', () => {
-        deepStrictEqual(new Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff])).bits(32), 2 ** 32 - 1);
+        eql(new Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff])).bits(32), 2 ** 32 - 1);
       });
 
       should('full mask', () => {
         const u = new Reader(new Uint8Array([0xff]));
-        deepStrictEqual([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 1, 15, 3]);
-        deepStrictEqual(u.isEnd(), true);
+        eql([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 1, 15, 3]);
+        eql(u.isEnd(), true);
       });
 
       should('u32 mask', () => {
         const u = new Reader(new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010, 0]));
-        for (let i = 0; i < 32; i++) deepStrictEqual(u.bits(1), +!(i & 1));
-        deepStrictEqual(u.byte(), 0);
-        deepStrictEqual(u.isEnd(), true);
+        for (let i = 0; i < 32; i++) eql(u.bits(1), +!(i & 1));
+        eql(u.byte(), 0);
+        eql(u.isEnd(), true);
       });
 
       should('throw on non-full (1 byte)', () => {
@@ -1367,8 +1365,8 @@ describe('utils', () => {
         throws(() => r.bytes(1, true));
         throws(() => r.byte(true));
         r.bits(1);
-        deepStrictEqual(r.byte(), 0);
-        deepStrictEqual(r.isEnd(), true);
+        eql(r.byte(), 0);
+        eql(r.isEnd(), true);
       });
 
       should('throw on non-full (4 byte)', () => {
@@ -1379,8 +1377,8 @@ describe('utils', () => {
         throws(() => r.bytes(1, true));
         throws(() => r.byte(true));
         r.bits(1);
-        deepStrictEqual(r.byte(), 0);
-        deepStrictEqual(r.isEnd(), true);
+        eql(r.byte(), 0);
+        eql(r.isEnd(), true);
       });
 
       should('empty array', () => {
@@ -1393,29 +1391,29 @@ describe('utils', () => {
     should('find', () => {
       const r = new Reader(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0]));
       // Basic
-      deepStrictEqual(r.find(new Uint8Array([0xfa])), 0);
-      deepStrictEqual(r.find(new Uint8Array([0xfb])), 1);
-      deepStrictEqual(r.find(new Uint8Array([0xfc])), 2);
-      deepStrictEqual(r.find(new Uint8Array([0xfd])), 3);
-      deepStrictEqual(r.find(new Uint8Array([0])), 4);
+      eql(r.find(new Uint8Array([0xfa])), 0);
+      eql(r.find(new Uint8Array([0xfb])), 1);
+      eql(r.find(new Uint8Array([0xfc])), 2);
+      eql(r.find(new Uint8Array([0xfd])), 3);
+      eql(r.find(new Uint8Array([0])), 4);
       // Two bytes
-      deepStrictEqual(r.find(new Uint8Array([0xfb, 0xfc])), 1);
-      deepStrictEqual(r.find(new Uint8Array([0xfb, 0xfd])), undefined);
-      deepStrictEqual(r.find(new Uint8Array([0xfc, 0xfd])), 2);
-      deepStrictEqual(r.find(new Uint8Array([0xfc, 0xfe])), undefined);
+      eql(r.find(new Uint8Array([0xfb, 0xfc])), 1);
+      eql(r.find(new Uint8Array([0xfb, 0xfd])), undefined);
+      eql(r.find(new Uint8Array([0xfc, 0xfd])), 2);
+      eql(r.find(new Uint8Array([0xfc, 0xfe])), undefined);
       // Bigger
-      deepStrictEqual(r.find(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0, 1])), undefined);
+      eql(r.find(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0, 1])), undefined);
       // Same
-      deepStrictEqual(r.find(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0])), 0);
+      eql(r.find(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0])), 0);
       // Empty needle
       throws(() => r.find(Uint8Array.of()));
       // Non-bytes needle
       throws(() => r.find([]));
       const r2 = new Reader(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0, 0xfa, 0xfb, 0xfc, 0xfd]));
-      deepStrictEqual(r.find(new Uint8Array([0xfb, 0xfc])), 1);
+      eql(r.find(new Uint8Array([0xfb, 0xfc])), 1);
       // Second element
-      deepStrictEqual(r.find(new Uint8Array([0xfb, 0xfc]), 2), undefined);
-      deepStrictEqual(r2.find(new Uint8Array([0xfb, 0xfc]), 2), 6);
+      eql(r.find(new Uint8Array([0xfb, 0xfc]), 2), undefined);
+      eql(r2.find(new Uint8Array([0xfb, 0xfc]), 2), 6);
     });
   });
 
@@ -1426,7 +1424,7 @@ describe('utils', () => {
       w.bits(0, 1);
       w.bits(6, 4);
       w.bits(0, 2);
-      deepStrictEqual(w.finish(), new Uint8Array([152]));
+      eql(w.finish(), new Uint8Array([152]));
     });
 
     should('bits: full mask', () => {
@@ -1435,13 +1433,13 @@ describe('utils', () => {
       w.bits(1, 1);
       w.bits(15, 4);
       w.bits(3, 2);
-      deepStrictEqual(w.finish(), new Uint8Array([0xff]));
+      eql(w.finish(), new Uint8Array([0xff]));
     });
 
     should('bits: u32 single', () => {
       let w = new Writer();
       w.bits(2 ** 32 - 1, 32);
-      deepStrictEqual(w.finish(), new Uint8Array([0xff, 0xff, 0xff, 0xff]));
+      eql(w.finish(), new Uint8Array([0xff, 0xff, 0xff, 0xff]));
     });
 
     should('bits: u32 partial', () => {
@@ -1449,13 +1447,13 @@ describe('utils', () => {
       w.bits(0xff, 8);
       for (let i = 0; i < 8; i++) w.bits(1, 1);
       w.bits(0xffff, 16);
-      deepStrictEqual(w.finish(), new Uint8Array([0xff, 0xff, 0xff, 0xff]));
+      eql(w.finish(), new Uint8Array([0xff, 0xff, 0xff, 0xff]));
     });
 
     should('bits: u32 mask', () => {
       let w = new Writer();
       for (let i = 0; i < 32; i++) w.bits(+!(i & 1), 1);
-      deepStrictEqual(w.finish(), new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010]));
+      eql(w.finish(), new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010]));
     });
 
     should('bits: throw on non-full (1 byte)', () => {
@@ -1467,7 +1465,7 @@ describe('utils', () => {
       w.bits(0, 1);
       w.byte(1);
       w.bytes(new Uint8Array([2, 3]));
-      deepStrictEqual(w.finish(), new Uint8Array([0, 1, 2, 3]));
+      eql(w.finish(), new Uint8Array([0, 1, 2, 3]));
     });
 
     should('bits: throw on non-full (4 byte)', () => {
@@ -1479,7 +1477,7 @@ describe('utils', () => {
       w.bits(0, 1);
       w.byte(1);
       w.bytes(new Uint8Array([2, 3]));
-      deepStrictEqual(w.finish(), new Uint8Array([0, 0, 0, 0, 1, 2, 3]));
+      eql(w.finish(), new Uint8Array([0, 0, 0, 0, 1, 2, 3]));
     });
   });
   describe('BitSet', () => {
@@ -1492,15 +1490,15 @@ describe('utils', () => {
       }
     };
     should('new', () => {
-      deepStrictEqual(bitset.create(0).length, 0);
-      deepStrictEqual(bitset.create(1).length, 1);
-      deepStrictEqual(bitset.create(32).length, 1);
-      deepStrictEqual(bitset.create(33).length, 2);
-      deepStrictEqual(bitset.create(64).length, 2);
-      deepStrictEqual(bitset.create(65).length, 3);
-      deepStrictEqual(bitset.create(95).length, 3);
-      deepStrictEqual(bitset.create(96).length, 3);
-      deepStrictEqual(bitset.create(97).length, 4);
+      eql(bitset.create(0).length, 0);
+      eql(bitset.create(1).length, 1);
+      eql(bitset.create(32).length, 1);
+      eql(bitset.create(33).length, 2);
+      eql(bitset.create(64).length, 2);
+      eql(bitset.create(65).length, 3);
+      eql(bitset.create(95).length, 3);
+      eql(bitset.create(96).length, 3);
+      eql(bitset.create(97).length, 4);
     });
     should('setRangeBasic', () => {
       const LEN = 95;
@@ -1508,7 +1506,7 @@ describe('utils', () => {
       const t = (pos, len, exp) => {
         bitset.clean(bs);
         setRangeBasic(bs, LEN, pos, len);
-        deepStrictEqual(bitset.debug(bs), exp);
+        eql(bitset.debug(bs), exp);
       };
       t(0, 5, [
         '11111000000000000000000000000000',
@@ -1584,7 +1582,7 @@ describe('utils', () => {
       const t = (pos, len, exp) => {
         bitset.clean(bs);
         setRangeBasic(bs, LEN, pos, len);
-        deepStrictEqual(bitset.debug(bs), exp);
+        eql(bitset.debug(bs), exp);
       };
       t(0, 160, [
         '11111111111111111111111111111111',
@@ -1616,7 +1614,7 @@ describe('utils', () => {
       const t = (pos, len, exp) => {
         bitset.clean(bs);
         setRangeBasic(bs, LEN, pos, len);
-        deepStrictEqual(bitset.indices(bs, LEN), exp);
+        eql(bitset.indices(bs, LEN), exp);
       };
       t(0, 5, [0, 1, 2, 3, 4]);
       t(1, 5, [1, 2, 3, 4, 5]);
@@ -1632,37 +1630,37 @@ describe('utils', () => {
       const LEN = 95;
       const bs = bitset.create(LEN);
       setRangeBasic(bs, LEN, 0, 5);
-      deepStrictEqual(bitset.range(bitset.indices(bs, LEN)), [{ pos: 0, length: 5 }]);
-      deepStrictEqual(bitset.range(bitset.indices(bs, LEN, true)), [{ pos: 5, length: 90 }]);
+      eql(bitset.range(bitset.indices(bs, LEN)), [{ pos: 0, length: 5 }]);
+      eql(bitset.range(bitset.indices(bs, LEN, true)), [{ pos: 5, length: 90 }]);
 
       setRangeBasic(bs, LEN, 5, 3);
-      deepStrictEqual(bitset.range(bitset.indices(bs, LEN)), [{ pos: 0, length: 8 }]);
+      eql(bitset.range(bitset.indices(bs, LEN)), [{ pos: 0, length: 8 }]);
       setRangeBasic(bs, LEN, 9, 3);
-      deepStrictEqual(bitset.range(bitset.indices(bs, LEN)), [
+      eql(bitset.range(bitset.indices(bs, LEN)), [
         { pos: 0, length: 8 },
         { pos: 9, length: 3 },
       ]);
       setRangeBasic(bs, LEN, 15, 5);
-      deepStrictEqual(bitset.range(bitset.indices(bs, LEN)), [
+      eql(bitset.range(bitset.indices(bs, LEN)), [
         { pos: 0, length: 8 },
         { pos: 9, length: 3 },
         { pos: 15, length: 5 },
       ]);
       setRangeBasic(bs, LEN, 20, 1);
-      deepStrictEqual(bitset.range(bitset.indices(bs, LEN)), [
+      eql(bitset.range(bitset.indices(bs, LEN)), [
         { pos: 0, length: 8 },
         { pos: 9, length: 3 },
         { pos: 15, length: 6 },
       ]);
       setRangeBasic(bs, LEN, 22, 1);
-      deepStrictEqual(bitset.range(bitset.indices(bs, LEN)), [
+      eql(bitset.range(bitset.indices(bs, LEN)), [
         { pos: 0, length: 8 },
         { pos: 9, length: 3 },
         { pos: 15, length: 6 },
         { pos: 22, length: 1 },
       ]);
       setRangeBasic(bs, LEN, 24, 1);
-      deepStrictEqual(bitset.range(bitset.indices(bs, LEN)), [
+      eql(bitset.range(bitset.indices(bs, LEN)), [
         { pos: 0, length: 8 },
         { pos: 9, length: 3 },
         { pos: 15, length: 6 },
@@ -1670,7 +1668,7 @@ describe('utils', () => {
         { pos: 24, length: 1 },
       ]);
       setRangeBasic(bs, LEN, 26, 10);
-      deepStrictEqual(bitset.range(bitset.indices(bs, LEN)), [
+      eql(bitset.range(bitset.indices(bs, LEN)), [
         { pos: 0, length: 8 },
         { pos: 9, length: 3 },
         { pos: 15, length: 6 },
@@ -1678,15 +1676,15 @@ describe('utils', () => {
         { pos: 24, length: 1 },
         { pos: 26, length: 10 },
       ]);
-      deepStrictEqual(
+      eql(
         bitset.rangeDebug(bs, LEN),
         '[(0/8), (9/3), (15/6), (22/1), (24/1), (26/10)]'
       );
-      deepStrictEqual(
+      eql(
         bitset.rangeDebug(bs, LEN, true),
         '[(8/1), (12/3), (21/1), (23/1), (25/1), (36/59)]'
       );
-      deepStrictEqual(
+      eql(
         bitset.indices(bs, LEN),
         // prettier-ignore
         [
@@ -1698,7 +1696,7 @@ describe('utils', () => {
         26, 27, 28, 29, 30, 31, 32, 33, 34, 35, // pos=26 len=10
       ]
       );
-      deepStrictEqual(
+      eql(
         bitset.indices(bs, LEN, true),
         // prettier-ignore
         [
@@ -1719,8 +1717,8 @@ describe('utils', () => {
       const bs = bitset.create(LEN);
       const t = (pos, len, exp) => {
         bitset.clean(bs);
-        deepStrictEqual(bitset.setRange(bs, LEN, pos, len), true);
-        deepStrictEqual(bitset.debug(bs), exp);
+        eql(bitset.setRange(bs, LEN, pos, len), true);
+        eql(bitset.debug(bs), exp);
       };
       t(0, 5, [
         '11111000000000000000000000000000',
@@ -1793,33 +1791,33 @@ describe('utils', () => {
         for (let l = 1; l <= maxLen; l++) {
           bitset.clean(bs);
           setRangeBasic(bs, LEN, pos, l);
-          deepStrictEqual(bitset.range(bitset.indices(bs, LEN)), [{ pos, length: l }]);
+          eql(bitset.range(bitset.indices(bs, LEN)), [{ pos, length: l }]);
           const tmp = bs.slice();
           bitset.clean(bs);
-          deepStrictEqual(bitset.setRange(bs, LEN, pos, l), true);
-          deepStrictEqual(bs, tmp);
+          eql(bitset.setRange(bs, LEN, pos, l), true);
+          eql(bs, tmp);
         }
       }
     });
     should('setRange rewrite', () => {
       const LEN = 95;
       const bs = bitset.create(LEN);
-      deepStrictEqual(bitset.setRange(bs, LEN, 0, 5, false), true);
-      deepStrictEqual(bitset.setRange(bs, LEN, 0, 5, false), false);
-      deepStrictEqual(bitset.setRange(bs, LEN, 1, 10, false), false);
-      deepStrictEqual(bitset.debug(bs), [
+      eql(bitset.setRange(bs, LEN, 0, 5, false), true);
+      eql(bitset.setRange(bs, LEN, 0, 5, false), false);
+      eql(bitset.setRange(bs, LEN, 1, 10, false), false);
+      eql(bitset.debug(bs), [
         '11111000000000000000000000000000',
         '00000000000000000000000000000000',
         '00000000000000000000000000000000',
       ]);
-      deepStrictEqual(bitset.setRange(bs, LEN, 2, 64, false), false);
-      deepStrictEqual(bitset.debug(bs), [
+      eql(bitset.setRange(bs, LEN, 2, 64, false), false);
+      eql(bitset.debug(bs), [
         '11111000000000000000000000000000',
         '00000000000000000000000000000000',
         '00000000000000000000000000000000',
       ]);
-      deepStrictEqual(bitset.setRange(bs, LEN, 2, 64, true), true);
-      deepStrictEqual(bitset.debug(bs), [
+      eql(bitset.setRange(bs, LEN, 2, 64, true), true);
+      eql(bitset.debug(bs), [
         '11111111111111111111111111111111',
         '11111111111111111111111111111111',
         '11000000000000000000000000000000',
