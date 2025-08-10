@@ -188,10 +188,7 @@ describe('primitives', () => {
     eql(VarU64.encode(0n), new Uint8Array([]));
     eql(VarU64.encode(10n), new Uint8Array([10]));
     eql(VarU64.encode(300n), new Uint8Array([1, 44]));
-    eql(
-      VarU64.encode(2n ** 64n - 1n),
-      new Uint8Array([255, 255, 255, 255, 255, 255, 255, 255])
-    );
+    eql(VarU64.encode(2n ** 64n - 1n), new Uint8Array([255, 255, 255, 255, 255, 255, 255, 255]));
     throws(() => VarU64.encode(2n ** 64n));
     // decode
     eql(VarU64.decode(VarU64.encode(10n)), 10n);
@@ -372,10 +369,7 @@ describe('structures', () => {
       eql(a.decode(a.encode({ len: 2, arr: [1, 2] })), { len: 2, arr: [1, 2] });
       eql(a.decode(a.encode({ len: 3, arr: [1, 2, 3] })), { len: 3, arr: [1, 2, 3] });
       // Same as array(sz=fixed number encoding)
-      eql(
-        a.encode({ len: 3, arr: [1, 2, 3] }),
-        P.array(P.U16LE, P.U16BE).encode([1, 2, 3])
-      );
+      eql(a.encode({ len: 3, arr: [1, 2, 3] }), P.array(P.U16LE, P.U16BE).encode([1, 2, 3]));
     });
 
     should('sz=bytes', () => {
@@ -1163,10 +1157,7 @@ describe('coders', () => {
     eql(d2.encode(d2.decode('22.1111')), '22.11');
     eql(d2.encode(d2.decode('22.9999')), '22.99');
     // Doesn't affect integer part
-    eql(
-      d2.encode(d2.decode('222222222222222222222222222.9999')),
-      '222222222222222222222222222.99'
-    );
+    eql(d2.encode(d2.decode('222222222222222222222222222.9999')), '222222222222222222222222222.99');
     const i64 = P.apply(P.I64BE, P.coders.decimal(9));
     const ok = [
       '1',
@@ -1190,10 +1181,7 @@ describe('coders', () => {
     // Input can be from user, so this is ok, but '-0' is not.
     eql(i64.decode(i64.encode('1000000000.000000000')), '1000000000');
     eql(i64.decode(i64.encode('1000000000.0000000000')), '1000000000');
-    eql(
-      i64.decode(i64.encode('1000000000.0000000000000000000000000000')),
-      '1000000000'
-    );
+    eql(i64.decode(i64.encode('1000000000.0000000000000000000000000000')), '1000000000');
     const fail = [
       true,
       1,
@@ -1676,14 +1664,8 @@ describe('utils', () => {
         { pos: 24, length: 1 },
         { pos: 26, length: 10 },
       ]);
-      eql(
-        bitset.rangeDebug(bs, LEN),
-        '[(0/8), (9/3), (15/6), (22/1), (24/1), (26/10)]'
-      );
-      eql(
-        bitset.rangeDebug(bs, LEN, true),
-        '[(8/1), (12/3), (21/1), (23/1), (25/1), (36/59)]'
-      );
+      eql(bitset.rangeDebug(bs, LEN), '[(0/8), (9/3), (15/6), (22/1), (24/1), (26/10)]');
+      eql(bitset.rangeDebug(bs, LEN, true), '[(8/1), (12/3), (21/1), (23/1), (25/1), (36/59)]');
       eql(
         bitset.indices(bs, LEN),
         // prettier-ignore
