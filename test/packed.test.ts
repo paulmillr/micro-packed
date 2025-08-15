@@ -185,7 +185,7 @@ describe('primitives', () => {
     VarU64.decode(new Uint8Array(8));
     throws(() => VarU64.decode(new Uint8Array(9))); // left more than needed
     // encode
-    eql(VarU64.encode(0n), new Uint8Array([]));
+    eql(VarU64.encode(0n), Uint8Array.of());
     eql(VarU64.encode(10n), new Uint8Array([10]));
     eql(VarU64.encode(300n), new Uint8Array([1, 44]));
     eql(VarU64.encode(2n ** 64n - 1n), new Uint8Array([255, 255, 255, 255, 255, 255, 255, 255]));
@@ -373,7 +373,7 @@ describe('structures', () => {
     });
 
     should('sz=bytes', () => {
-      const a = P.array(new Uint8Array([0]), P.U16LE);
+      const a = P.array(Uint8Array.of(0), P.U16LE);
       // basic encode/decode
       eql(a.decode(a.encode([1, 2, 3])), [1, 2, 3]);
       // NOTE: LE here becase 0 is terminator
@@ -404,7 +404,7 @@ describe('structures', () => {
     should('sz=fixed number', () => {
       const a = P.bytes(4);
       // Throws if size different
-      throws(() => a.encode(new Uint8Array([1])));
+      throws(() => a.encode(Uint8Array.of(1)));
       throws(() => a.encode(new Uint8Array([1, 2, 3, 4, 5])));
       const data = new Uint8Array([1, 2, 3, 4]);
       eql(a.decode(a.encode(data)), data);
@@ -414,7 +414,7 @@ describe('structures', () => {
     should('sz=dynamic number', () => {
       const a = P.bytes(P.U16LE);
       // Works for different sizes
-      eql(a.decode(a.encode(new Uint8Array([1]))), new Uint8Array([1]));
+      eql(a.decode(a.encode(Uint8Array.of(1))), Uint8Array.of(1));
       eql(a.decode(a.encode(new Uint8Array([1, 2]))), new Uint8Array([1, 2]));
       eql(a.decode(a.encode(new Uint8Array([1, 2, 3]))), new Uint8Array([1, 2, 3]));
       eql(a.encode(new Uint8Array([1, 2, 3])), new Uint8Array([3, 0, 1, 2, 3]));
@@ -428,9 +428,9 @@ describe('structures', () => {
       // Throws on argument and array size mismatch
       throws(() => a.encode({ len: 1, arr: new Uint8Array([1, 2]) }));
       // Works for different sizes
-      eql(a.decode(a.encode({ len: 1, arr: new Uint8Array([1]) })), {
+      eql(a.decode(a.encode({ len: 1, arr: Uint8Array.of(1) })), {
         len: 1,
-        arr: new Uint8Array([1]),
+        arr: Uint8Array.of(1),
       });
       eql(a.decode(a.encode({ len: 2, arr: new Uint8Array([1, 2]) })), {
         len: 2,
@@ -448,7 +448,7 @@ describe('structures', () => {
     });
 
     should('sz=bytes', () => {
-      const a = P.bytes(new Uint8Array([0]));
+      const a = P.bytes(Uint8Array.of(0));
       // basic encode/decode
       eql(a.decode(a.encode(new Uint8Array([1, 2, 3]))), new Uint8Array([1, 2, 3]));
       // NOTE: LE here becase 0 is terminator
@@ -905,18 +905,18 @@ describe('structures', () => {
       const f = P.flag(new Uint8Array([0x1, 0x2, 0x3]));
       const f2 = P.flag(new Uint8Array([0x1, 0x2, 0x3]), true);
       eql(f.encode(true), new Uint8Array([0x1, 0x2, 0x3]));
-      eql(f.encode(false), new Uint8Array([]));
+      eql(f.encode(false), Uint8Array.of());
       eql(f.decode(new Uint8Array([0x1, 0x2, 0x3])), true, 'flag true');
-      eql(f.decode(new Uint8Array([])), false, 'flag false');
+      eql(f.decode(Uint8Array.of()), false, 'flag false');
       throws(() => f.decode(new Uint8Array([0x1, 0x2])));
       throws(() => f.decode(new Uint8Array([0x1])));
       throws(() => f.decode(new Uint8Array([0x1, 0x2, 0x4])));
 
       eql(f2.encode(false), new Uint8Array([0x1, 0x2, 0x3]));
-      eql(f2.encode(true), new Uint8Array([]));
+      eql(f2.encode(true), Uint8Array.of());
 
       eql(f2.decode(new Uint8Array([0x1, 0x2, 0x3])), false, 'flag true xor');
-      eql(f2.decode(new Uint8Array([])), true, 'flag false xor');
+      eql(f2.decode(Uint8Array.of()), true, 'flag false xor');
       throws(() => f2.decode(new Uint8Array([0x1, 0x2])));
       throws(() => f2.decode(new Uint8Array([0x1])));
       throws(() => f2.decode(new Uint8Array([0x1, 0x2, 0x4])));
@@ -924,7 +924,7 @@ describe('structures', () => {
 
     should('flagged', () => {
       const s = P.struct({ f: P.flag(new Uint8Array([0x0, 0x1])), f2: P.flagged('f', P.U32BE) });
-      eql(s.encode({ f2: 1234 }), new Uint8Array([]));
+      eql(s.encode({ f2: 1234 }), Uint8Array.of());
       eql(s.encode({ f: true, f2: 1234 }), new Uint8Array([0, 1, 0, 0, 4, 210]));
       // Flag but no data
       throws(() => s.encode({ f: true }));
@@ -943,9 +943,9 @@ describe('structures', () => {
       // Decode only if there is flag. No flag -> return undefined
       const s3 = P.flagged(P.flag(new Uint8Array([0x0, 0x1])), P.U32BE);
       eql(s3.encode(123), new Uint8Array([0x0, 0x1, 0x0, 0x0, 0x0, 123]));
-      eql(s3.encode(undefined), new Uint8Array([]));
+      eql(s3.encode(undefined), Uint8Array.of());
       eql(s3.decode(new Uint8Array([0x0, 0x1, 0x0, 0x0, 0x0, 123])), 123);
-      eql(s3.decode(new Uint8Array([])), undefined);
+      eql(s3.decode(Uint8Array.of()), undefined);
       throws(() => s3.decode(new Uint8Array([0x1])));
       throws(() => s3.decode(new Uint8Array([0x1, 0x2, 0x3, 0x4, 0x5, 0x6])));
       // Decode only if thre is no flag. If flag -> return undefined
@@ -1034,7 +1034,7 @@ describe('structures', () => {
       eql(e.decode(e.encode('test')), 'test');
       eql(e.decode(e.encode('other')), 'other');
       throws(() => e.encode('anything'));
-      throws(() => e.decode(new Uint8Array([1])));
+      throws(() => e.decode(Uint8Array.of(1)));
     });
 
     should('hex', () => {
@@ -1106,7 +1106,7 @@ describe('structures', () => {
       eql(P.utils.isPlainObject({}), true);
       eql(P.utils.isPlainObject(null), false);
       eql(P.utils.isPlainObject([]), false);
-      eql(P.utils.isPlainObject(new Uint8Array([])), false);
+      eql(P.utils.isPlainObject(Uint8Array.of()), false);
     });
   });
 });
@@ -1187,7 +1187,7 @@ describe('coders', () => {
       1,
       1n,
       [],
-      new Uint8Array([]),
+      Uint8Array.of(),
       {},
       null,
       undefined,
@@ -1370,9 +1370,9 @@ describe('utils', () => {
       });
 
       should('empty array', () => {
-        throws(() => new Reader(new Uint8Array([])).bits(1), '1');
-        throws(() => new Reader(new Uint8Array([])).bits(8), '8');
-        throws(() => new Reader(new Uint8Array([])).bits(32), '32');
+        throws(() => new Reader(Uint8Array.of()).bits(1), '1');
+        throws(() => new Reader(Uint8Array.of()).bits(8), '8');
+        throws(() => new Reader(Uint8Array.of()).bits(32), '32');
       });
     });
 
@@ -1383,7 +1383,7 @@ describe('utils', () => {
       eql(r.find(new Uint8Array([0xfb])), 1);
       eql(r.find(new Uint8Array([0xfc])), 2);
       eql(r.find(new Uint8Array([0xfd])), 3);
-      eql(r.find(new Uint8Array([0])), 4);
+      eql(r.find(Uint8Array.of(0)), 4);
       // Two bytes
       eql(r.find(new Uint8Array([0xfb, 0xfc])), 1);
       eql(r.find(new Uint8Array([0xfb, 0xfd])), undefined);
