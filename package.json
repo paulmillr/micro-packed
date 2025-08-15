@@ -29,7 +29,6 @@
     "bench:all": "node test/benchmark.ts",
     "build": "tsc",
     "build:release": "npx --no @paulmillr/jsbt esbuild test/build",
-    "lint": "prettier --check src test",
     "format": "prettier --write src test",
     "test": "node test/index.ts",
     "test:bun": "bun test/index.ts",
