@@ -1063,7 +1063,7 @@ export const bits = (len: number): CoderType<number> => {
  * CoderType for working with bigint values.
  * Unsized bigint values should be wrapped in a container (e.g., bytes or string).
  *
- * `0n = new Uint8Array([])`
+ * `0n = Uint8Array.of()`
  *
  * `1n = new Uint8Array([1n])`
  *
@@ -1153,7 +1153,7 @@ export const I64BE: CoderType<bigint> = /* @__PURE__ */ bigint(8, false, true);
  * CoderType for working with numbber values (up to 6 bytes/48 bits).
  * Unsized int values should be wrapped in a container (e.g., bytes or string).
  *
- * `0 = new Uint8Array([])`
+ * `0 = Uint8Array.of()`
  *
  * `1 = new Uint8Array([1n])`
  *
@@ -1788,7 +1788,7 @@ export function tuple<
  * const a1 = P.array(P.U16BE, child); // Dynamic size array (prefixed with P.U16BE number of array length)
  * const a2 = P.array(4, child); // Fixed size array
  * const a3 = P.array(null, child); // Unknown size array, will parse until end of buffer
- * const a4 = P.array(new Uint8Array([0]), child); // zero-terminated array (NOTE: terminator can be any buffer)
+ * const a4 = P.array(Uint8Array.of(0), child); // zero-terminated array (NOTE: terminator can be any buffer)
  */
 export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
   if (!isCoder(inner)) throw new Error(`array: invalid inner value ${inner}`);
