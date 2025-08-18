@@ -1,4 +1,4 @@
-import mark from 'micro-bmark';
+import mark from '@paulmillr/jsbt/bench.js';
 import * as P from '../src/index.ts';
 
 const SAMPLES = 1000;

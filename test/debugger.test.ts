@@ -1,5 +1,5 @@
+import { should } from '@paulmillr/jsbt/test.js';
 import { hex } from '@scure/base';
-import { should } from 'micro-should';
 import { throws } from 'node:assert';
 import * as PD from '../src/debugger.ts';
 import * as P from '../src/index.ts';
