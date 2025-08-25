@@ -1,6 +1,6 @@
 {
   "name": "micro-packed",
-  "version": "0.8.0-beta.1",
+  "version": "0.8.0",
   "description": "Define complex binary structures using composable primitives",
   "files": [
     "index.js",
@@ -15,7 +15,7 @@
     "src/debugger.ts"
   ],
   "dependencies": {
-    "@scure/base": "2.0.0-beta.1"
+    "@scure/base": "2.0.0"
   },
   "devDependencies": {
     "@paulmillr/jsbt": "0.4.4",
