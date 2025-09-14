@@ -35,6 +35,10 @@
     "test:node20": "cd test; npx tsc; node compiled/test/index.js",
     "test:slow": "node test/slow.test.ts"
   },
+  "exports": {
+    ".": "./index.js",
+    "./debugger.js": "./debugger.js"
+  },
   "engines": {
     "node": ">= 20.19.0"
   },
