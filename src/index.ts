@@ -10,6 +10,8 @@ import { hex as baseHex, utf8, type Coder as BaseCoder } from '@scure/base';
  * - Types are inferred from definition
  * @module
  * @example
+ * Define a struct with numbers, strings, bytes, and nested arrays.
+ * ```ts
  * import * as P from 'micro-packed';
  * const s = P.struct({
  *   field1: P.U32BE, // 32-bit unsigned big-endian integer
@@ -20,6 +22,7 @@ import { hex as baseHex, utf8, type Coder as BaseCoder } from '@scure/base';
  *     subField2: P.string(10) // 10-byte string
  *   }))
  * });
+ * ```
  */
 
 // TODO: remove dependency on scure-base & inline?
@@ -94,6 +97,17 @@ function isNum(num: unknown): num is number {
   return Number.isSafeInteger(num);
 }
 
+/**
+ * Miscellaneous helpers reused by the coder internals and tests.
+ * @example
+ * Reuse a couple of byte helpers without pulling in the full namespace.
+ * ```ts
+ * import { utils } from 'micro-packed';
+ * const left = Uint8Array.of(1);
+ * const right = Uint8Array.of(2);
+ * utils.equalBytes(utils.concatBytes(left, right), Uint8Array.of(1, 2));
+ * ```
+ */
 export const utils: {
   equalBytes: typeof equalBytes;
   isBytes: typeof isBytes;
@@ -113,41 +127,65 @@ export const utils: {
 };
 
 // Types
+/** Byte-array alias used throughout the public API. */
 export type Bytes = Uint8Array;
+/** Optional value helper used by conditional coders. */
 export type Option<T> = T | undefined;
-/**
- * Coder encodes and decodes between two types.
- * @property {(from: F) => T} encode - Encodes (converts) F to T
- * @property {(to: T) => F} decode - Decodes (converts) T to F
- */
+/** Coder encodes and decodes between two types. */
 export interface Coder<F, T> {
+  /**
+   * Encodes (converts) a decoded value into its serialized representation.
+   * @param from - Value to encode.
+   * @returns Encoded representation.
+   */
   encode(from: F): T;
+  /**
+   * Decodes (converts) a serialized value back into its decoded representation.
+   * @param to - Encoded representation to decode.
+   * @returns Decoded value.
+   */
   decode(to: T): F;
 }
-/**
- * BytesCoder converts value between a type and a byte array
- * @property {number} [size] - Size hint for the element.
- * @property {(data: T) => Bytes} encode - Encodes a value of type T to a byte array
- * @property {(data: Bytes, opts?: ReaderOpts) => T} decode - Decodes a byte array to a value of type T
- */
+/** BytesCoder converts value between a type and a byte array. */
 export interface BytesCoder<T> extends Coder<T, Bytes> {
-  size?: number; // Size hint element
+  /** Fixed-size hint in bytes, when known. */
+  size?: number;
+  /**
+   * Encodes a value into a byte array.
+   * @param data - Value to encode.
+   * @returns Encoded bytes.
+   */
   encode: (data: T) => Bytes;
+  /**
+   * Decodes a byte array into a value.
+   * @param data - Bytes to decode.
+   * @param opts - Reader options used while decoding. See {@link ReaderOpts}.
+   * @returns Decoded value.
+   */
   decode: (data: Bytes, opts?: ReaderOpts) => T;
 }
-/**
- * BytesCoderStream converts value between a type and a byte array, using streams.
- * @property {number} [size] - Size hint for the element.
- * @property {(w: Writer, value: T) => void} encodeStream - Encodes a value of type T to a byte array using a Writer stream.
- * @property {(r: Reader) => T} decodeStream - Decodes a byte array to a value of type T using a Reader stream.
- */
+/** BytesCoderStream converts value between a type and a byte array, using streams. */
 export interface BytesCoderStream<T> {
+  /** Fixed-size hint in bytes, when known. */
   size?: number;
+  /**
+   * Encodes a value into a Writer stream.
+   * @param w - Writer stream.
+   * @param value - Value to encode.
+   */
   encodeStream: (w: Writer, value: T) => void;
+  /**
+   * Decodes a value from a Reader stream.
+   * @param r - Reader stream.
+   * @returns Decoded value.
+   */
   decodeStream: (r: Reader) => T;
 }
+/** Full coder interface with both stream and byte-array helpers. */
 export type CoderType<T> = BytesCoderStream<T> & BytesCoder<T>;
+/** CoderType with a known fixed byte size. */
 export type Sized<T> = CoderType<T> & { size: number };
+/** Extract the decoded value type from a coder. */
 export type UnwrapCoder<T> = T extends CoderType<infer U> ? U : T;
 /**
  * Validation function. Should return value after validation.
@@ -155,6 +193,7 @@ export type UnwrapCoder<T> = T extends CoderType<infer U> ? U : T;
  */
 export type Validate<T> = (elm: T) => T;
 
+/** Length descriptor accepted by variable-size coders. */
 export type Length = CoderType<number> | CoderType<bigint> | number | Bytes | string | null;
 
 // NOTE: we can't have terminator separate function, since it won't know about boundaries
@@ -202,6 +241,7 @@ const lengthCoder = (len: Length) => {
 
 type ArrLike<T> = Array<T> | ReadonlyArray<T>;
 // prettier-ignore
+/** Typed arrays supported by the utility helper types. */
 export type TypedArray =
   | Uint8Array  | Int8Array | Uint8ClampedArray
   | Uint16Array | Int16Array
@@ -215,22 +255,32 @@ export type Writable<T> = T extends {}
         -readonly [P in keyof T]: Writable<T[P]>;
       }
   : T;
+/** Union of object value types. */
 export type Values<T> = T[keyof T];
+/** Key helper that removes fields whose values are exactly `undefined`. */
 export type NonUndefinedKey<T, K extends keyof T> = T[K] extends undefined ? never : K;
+/** Key helper that keeps only nullable fields. */
 export type NullableKey<T, K extends keyof T> = T[K] extends NonNullable<T[K]> ? never : K;
 // Opt: value !== undefined, but value === T|undefined
+/** Key helper for optional-but-present struct fields. */
 export type OptKey<T, K extends keyof T> = NullableKey<T, K> & NonUndefinedKey<T, K>;
+/** Key helper for required struct fields. */
 export type ReqKey<T, K extends keyof T> = T[K] extends NonNullable<T[K]> ? K : never;
 
+/** Object containing only optional keys from a struct shape. */
 export type OptKeys<T> = Pick<T, { [K in keyof T]: OptKey<T, K> }[keyof T]>;
+/** Object containing only required keys from a struct shape. */
 export type ReqKeys<T> = Pick<T, { [K in keyof T]: ReqKey<T, K> }[keyof T]>;
+/** Input object type accepted by `struct()`. */
 export type StructInput<T extends Record<string, any>> = { [P in keyof ReqKeys<T>]: T[P] } & {
   [P in keyof OptKeys<T>]?: T[P];
 };
+/** Record of field names to coder instances for `struct()`. */
 export type StructRecord<T extends Record<string, any>> = {
   [P in keyof T]: CoderType<T[P]>;
 };
 
+/** Generic decoded object bag used internally by nested coders. */
 export type StructOut = Record<string, any>;
 /** Padding function that takes an index and returns a padding value. */
 export type PadFn = (i: number) => number;
@@ -360,10 +410,20 @@ const Path = {
     return res.join('/');
   },
   err: (name: string, stack: PathStack, msg: string | Error): Error => {
-    const err = new Error(
-      `${name}(${Path.path(stack)}): ${typeof msg === 'string' ? msg : msg.message}`
-    );
-    if (msg instanceof Error && msg.stack) err.stack = msg.stack;
+    const text = `${name}(${Path.path(stack)}): ${typeof msg === 'string' ? msg : msg.message}`;
+    // Keep specific validation classes after adding the path prefix. Otherwise public coder
+    // APIs flatten inner TypeError / RangeError guards back to plain Error.
+    const err =
+      msg instanceof TypeError
+        ? new TypeError(text)
+        : msg instanceof RangeError
+          ? new RangeError(text)
+          : new Error(text);
+    if (msg instanceof Error && msg.stack) {
+      const from = `${msg.name}: ${msg.message}`;
+      const to = `${err.name}: ${err.message}`;
+      err.stack = msg.stack.startsWith(from) ? `${to}${msg.stack.slice(from.length)}` : msg.stack;
+    }
     return err;
   },
   resolve: (stack: PathStack, path: string): StructOut | undefined => {
@@ -383,16 +443,15 @@ const Path = {
   },
 };
 
-/**
- * Options for the Reader class.
- * @property {boolean} [allowUnreadBytes: false] - If there are remaining unparsed bytes, the decoding is probably wrong.
- * @property {boolean} [allowMultipleReads: false] - The check enforces parser termination. If pointers can read the same region of memory multiple times, you can cause combinatorial explosion by creating an array of pointers to the same address and cause DoS.
- */
+/** Options for the Reader class. */
 export type ReaderOpts = {
+  /** Allow decoding to finish with unread trailing bytes. */
   allowUnreadBytes?: boolean;
+  /** Allow the same byte range to be read more than once through pointers. */
   allowMultipleReads?: boolean;
 };
 // These are safe API for external usage
+/** Reader interface passed into stream decoders. */
 export type Reader = {
   // Utils
   /** Current position in the buffer. */
@@ -401,7 +460,10 @@ export type Reader = {
   readonly leftBytes: number;
   /** Total number of bytes in the buffer. */
   readonly totalBytes: number;
-  /** Checks if the end of the buffer has been reached. */
+  /**
+   * Checks if the end of the buffer has been reached.
+   * @returns `true` when the reader consumed the whole buffer.
+   */
   isEnd(): boolean;
   /**
    * Creates an error with the given message. Adds information about current field path.
@@ -449,6 +511,7 @@ export type Reader = {
   offsetReader(n: number): Reader;
 };
 
+/** Writer interface passed into stream encoders. */
 export type Writer = {
   /**
    * Creates an error with the given message. Adds information about current field path.
@@ -773,17 +836,22 @@ function _wrap<T>(inner: BytesCoderStream<T>): CoderType<T> {
  * @param inner - The inner CoderType.
  * @param fn - The validation function.
  * @returns CoderType which check value with validation function.
+ * @throws On wrong inner coder or validator argument types. {@link TypeError}
  * @example
+ * Reject values outside the accepted range during both encode and decode.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const val = (n: number) => {
  *   if (n > 10) throw new Error(`${n} > 10`);
  *   return n;
  * };
  *
  * const RangedInt = P.validate(P.U32LE, val); // Will check if value is <= 10 during encoding and decoding
+ * ```
  */
 export function validate<T>(inner: CoderType<T>, fn: Validate<T>): CoderType<T> {
-  if (!isCoder(inner)) throw new Error(`validate: invalid inner value ${inner}`);
-  if (typeof fn !== 'function') throw new Error('validate: fn should be function');
+  if (!isCoder(inner)) throw new TypeError(`validate: invalid inner value ${inner}`);
+  if (typeof fn !== 'function') throw new TypeError('validate: fn should be function');
   return _wrap({
     size: inner.size,
     encodeStream: (w: Writer, value: T) => {
@@ -808,21 +876,26 @@ export function validate<T>(inner: CoderType<T>, fn: Validate<T>): CoderType<T> 
 
 /**
  * Wraps a stream encoder into a generic encoder and optionally validation function
- * @param {inner} inner BytesCoderStream & { validate?: Validate<T> }.
+ * @param inner - Stream coder with optional validation hook.
  * @returns The wrapped CoderType.
+ * @throws On wrong wrapped stream-coder shapes. {@link TypeError}
  * @example
+ * Start from stream methods, then add validation if needed.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const U8 = P.wrap({
- *   encodeStream: (w: Writer, value: number) => w.byte(value),
- *   decodeStream: (r: Reader): number => r.byte()
+ *   encodeStream: (w, value) => w.byte(value),
+ *   decodeStream: (r) => r.byte(),
  * });
  * const checkedU8 = P.wrap({
- *   encodeStream: (w: Writer, value: number) => w.byte(value),
- *   decodeStream: (r: Reader): number => r.byte()
+ *   encodeStream: (w, value) => w.byte(value),
+ *   decodeStream: (r) => r.byte(),
  *   validate: (n: number) => {
  *    if (n > 10) throw new Error(`${n} > 10`);
  *    return n;
  *   }
  * });
+ * ```
  */
 export const wrap = <T>(inner: BytesCoderStream<T> & { validate?: Validate<T> }): CoderType<T> => {
   const res = _wrap(inner);
@@ -836,6 +909,12 @@ const isBaseCoder = (elm: any) =>
  * Checks if the given value is a CoderType.
  * @param elm - The value to check.
  * @returns True if the value is a CoderType, false otherwise.
+ * @example
+ * Guard unknown values before calling encode/decode helpers on them.
+ * ```ts
+ * import { isCoder, U8 } from 'micro-packed';
+ * isCoder(U8);
+ * ```
  */
 export function isCoder<T>(elm: any): elm is CoderType<T> {
   return (
@@ -854,10 +933,14 @@ export function isCoder<T>(elm: any): elm is CoderType<T> {
  * Dictionary is dynamic type like: `[key: string, value: any][]`
  * @returns base coder that encodes/decodes between arrays of key-value tuples and dictionaries.
  * @example
+ * Convert between tuple entries and a plain object record.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const dict: P.CoderType<Record<string, number>> = P.apply(
  *  P.array(P.U16BE, P.tuple([P.cstring, P.U32LE] as const)),
  *  P.coders.dict()
  * );
+ * ```
  */
 function dict<T>(): BaseCoder<[string, T][], Record<string, T>> {
   return {
@@ -906,10 +989,14 @@ type EnumKeys<T extends Enum> = keyof T;
  * @param e - TypeScript enum.
  * @returns base coder that encodes/decodes between numbers and enum keys.
  * @example
+ * Map enum numbers to their string keys and back.
+ * ```ts
+ * import * as P from 'micro-packed';
  * enum Color { Red, Green, Blue }
  * const colorCoder = P.coders.tsEnum(Color);
  * colorCoder.encode(Color.Red); // 'Red'
  * colorCoder.decode('Green'); // 1
+ * ```
  */
 function tsEnum<T extends Enum>(e: T): BaseCoder<number, EnumKeys<T>> {
   if (!isPlainObject(e)) throw new Error('plain object expected');
@@ -930,9 +1017,13 @@ function tsEnum<T extends Enum>(e: T): BaseCoder<number, EnumKeys<T>> {
  * @param round - Round fraction part if bigger than precision (throws error by default)
  * @returns base coder that encodes/decodes between bigints and decimal strings.
  * @example
+ * Convert bigint amounts into fixed-precision decimal strings.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const decimal8 = P.coders.decimal(8);
  * decimal8.encode(630880845n); // '6.30880845'
  * decimal8.decode('6.30880845'); // 630880845n
+ * ```
  */
 function decimal(precision: number, round = false): Coder<bigint, string> {
   if (!isNum(precision)) throw new Error(`decimal/precision: wrong value ${precision}`);
@@ -1030,6 +1121,16 @@ const reverse = <F, T>(coder: Coder<F, T>): Coder<T, F> => {
   return { encode: coder.decode, decode: coder.encode };
 };
 
+/**
+ * Collection of reusable base coders and helpers.
+ * @example
+ * Build a reusable decimal-string adapter.
+ * ```ts
+ * import { coders } from 'micro-packed';
+ * const decimal2 = coders.decimal(2);
+ * decimal2.encode(123n); // '1.23'
+ * ```
+ */
 export const coders: {
   dict: typeof dict;
   numberBigint: BaseCoder<bigint, number>;
@@ -1044,8 +1145,14 @@ export const coders: {
  * NOTE: Structure should parse whole amount of bytes before it can start parsing byte-level elements.
  * @param len - Number of bits to parse.
  * @returns CoderType representing the parsed bits.
+ * @throws On invalid bit-length configuration or bit values. {@link Error}
+ * @throws On wrong argument types forwarded into wrapped numeric validators. {@link TypeError}
  * @example
+ * Pack several bit fields into a single byte.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const s = P.struct({ magic: P.bits(1), version: P.bits(1), tag: P.bits(4), len: P.bits(2) });
+ * ```
  */
 export const bits = (len: number): CoderType<number> => {
   if (!isNum(len)) throw new Error(`bits: wrong length ${len} (${typeof len})`);
@@ -1074,8 +1181,14 @@ export const bits = (len: number): CoderType<number> => {
  * @param signed - Whether the bigint is signed.
  * @param sized - Whether the bigint should have a fixed size.
  * @returns CoderType representing the bigint value.
+ * @throws On invalid bigint coder configuration or out-of-bounds bigint values. {@link Error}
+ * @throws On wrong builder argument or wrapped numeric value types. {@link TypeError}
  * @example
+ * Define a 512-bit unsigned big-endian integer coder.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const U512BE = P.bigint(64, false, true, true); // Define a CoderType for a 512-bit unsigned big-endian integer
+ * ```
  */
 export const bigint = (
   size: number,
@@ -1150,7 +1263,7 @@ export const I64LE: CoderType<bigint> = /* @__PURE__ */ bigint(8, true, true);
 export const I64BE: CoderType<bigint> = /* @__PURE__ */ bigint(8, false, true);
 
 /**
- * CoderType for working with numbber values (up to 6 bytes/48 bits).
+ * CoderType for working with number values (up to 6 bytes/48 bits).
  * Unsized int values should be wrapped in a container (e.g., bytes or string).
  *
  * `0 = Uint8Array.of()`
@@ -1164,8 +1277,14 @@ export const I64BE: CoderType<bigint> = /* @__PURE__ */ bigint(8, false, true);
  * @param signed - Whether the number is signed.
  * @param sized - Whether the number should have a fixed size.
  * @returns CoderType representing the number value.
+ * @throws On invalid number-coder configuration or out-of-bounds values. {@link Error}
+ * @throws On wrong builder argument or wrapped numeric value types. {@link TypeError}
  * @example
- * const uint64BE = P.bigint(8, false, true); // Define a CoderType for a 64-bit unsigned big-endian integer
+ * Create a coder for JavaScript numbers up to 48 bits wide.
+ * ```ts
+ * import * as P from 'micro-packed';
+ * const int24 = P.int(3, false); // Define a coder for a 24-bit unsigned big-endian integer
+ * ```
  */
 export const int = (size: number, le = false, signed = false, sized = true): CoderType<number> => {
   if (!isNum(size)) throw new Error(`int/size: wrong value ${size}`);
@@ -1192,7 +1311,7 @@ const view = (len: number, opts: ViewCoder) =>
     decodeStream: (r) => (r as _Reader).readView(len, opts.read),
     validate: (value: number) => {
       if (typeof value !== 'number')
-        throw new Error(`viewCoder: expected number, got ${typeof value}`);
+        throw new TypeError(`viewCoder: expected number, got ${typeof value}`);
       if (opts.validate) opts.validate(value);
       return value;
     },
@@ -1203,18 +1322,18 @@ const intView = (len: number, signed: boolean, opts: ViewCoder) => {
   const signBit = 2 ** (bits - 1);
   // Inlined checkBounds for integer
   const validateSigned = (value: number) => {
-    if (!isNum(value)) throw new Error(`sintView: value is not safe integer: ${value}`);
+    if (!isNum(value)) throw new TypeError(`sintView: value is not safe integer: ${value}`);
     if (value < -signBit || value >= signBit) {
-      throw new Error(
+      throw new RangeError(
         `sintView: value out of bounds. Expected ${-signBit} <= ${value} < ${signBit}`
       );
     }
   };
   const maxVal = 2 ** bits;
   const validateUnsigned = (value: number) => {
-    if (!isNum(value)) throw new Error(`uintView: value is not safe integer: ${value}`);
+    if (!isNum(value)) throw new TypeError(`uintView: value is not safe integer: ${value}`);
     if (0 > value || value >= maxVal) {
-      throw new Error(`uintView: value out of bounds. Expected 0 <= ${value} < ${maxVal}`);
+      throw new RangeError(`uintView: value out of bounds. Expected 0 <= ${value} < ${maxVal}`);
     }
   };
   return view(len, {
@@ -1299,7 +1418,6 @@ export const F32LE: CoderType<number> = /* @__PURE__ */ f32(true);
 export const F64BE: CoderType<number> = /* @__PURE__ */ f64(false);
 /** A 64-bit little-endian floating point type ("binary64", IEEE 754-2008). Any JS number can be encoded. */
 export const F64LE: CoderType<number> = /* @__PURE__ */ f64(true);
-
 /** Boolean CoderType. */
 export const bool: CoderType<boolean> = /* @__PURE__ */ wrap({
   size: 1,
@@ -1310,7 +1428,7 @@ export const bool: CoderType<boolean> = /* @__PURE__ */ wrap({
     return value === 1;
   },
   validate: (value) => {
-    if (typeof value !== 'boolean') throw new Error(`bool: invalid value ${value}`);
+    if (typeof value !== 'boolean') throw new TypeError(`bool: invalid value ${value}`);
     return value;
   },
 });
@@ -1325,15 +1443,20 @@ export const bool: CoderType<boolean> = /* @__PURE__ */ wrap({
  * @param len - CoderType, number, Uint8Array (terminator) or null
  * @param le - Whether to use little-endian byte order.
  * @returns CoderType representing the bytes.
+ * @throws If the byte layout or terminator handling is invalid. {@link Error}
+ * @throws On wrong byte-coder argument or value types. {@link TypeError}
  * @example
- * // Dynamic size bytes (prefixed with P.U16BE number of bytes length)
+ * Use fixed-size, length-prefixed, or trailing byte arrays.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const dynamicBytes = P.bytes(P.U16BE, false);
  * const fixedBytes = P.bytes(32, false); // Fixed size bytes
  * const unknownBytes = P.bytes(null, false); // Unknown size bytes, will parse until end of buffer
  * const zeroTerminatedBytes = P.bytes(Uint8Array.of(0), false); // Zero-terminated bytes
+ * ```
  */
 const createBytes = (len: Length, le = false): CoderType<Bytes> => {
-  if (typeof le !== 'boolean') throw new Error(`bytes/le: expected boolean, got ${typeof le}`);
+  if (typeof le !== 'boolean') throw new TypeError(`bytes/le: expected boolean, got ${typeof le}`);
   const _length = lengthCoder(len);
   const _isb = isBytes(len);
   return wrap({
@@ -1356,7 +1479,7 @@ const createBytes = (len: Length, le = false): CoderType<Bytes> => {
       return le ? swapEndianness(bytes) : bytes;
     },
     validate: (value) => {
-      if (!isBytes(value)) throw new Error(`bytes: invalid value ${value}`);
+      if (!isBytes(value)) throw new TypeError(`bytes: invalid value ${value}`);
       return value;
     },
   });
@@ -1374,9 +1497,15 @@ export { createBytes as bytes, createHex as hex };
  * @param len - Length CoderType (dynamic size), number (fixed size), Uint8Array (for terminator), or null (will parse until end of buffer)
  * @param inner - CoderType for the actual value to be prefix-encoded.
  * @returns CoderType representing the prefix-encoded value.
+ * @throws If the prefix configuration or wrapped coding step is invalid. {@link Error}
+ * @throws On wrong prefix-coder argument types. {@link TypeError}
  * @example
+ * Prefix a payload with either a dynamic or fixed byte count.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const dynamicPrefix = P.prefix(P.U16BE, P.bytes(null)); // Dynamic size prefix (prefixed with P.U16BE number of bytes length)
  * const fixedPrefix = P.prefix(10, P.bytes(null)); // Fixed size prefix (always 10 bytes)
+ * ```
  */
 export function prefix<T>(len: Length, inner: CoderType<T>): CoderType<T> {
   if (!isCoder(inner)) throw new Error(`prefix: invalid inner value ${inner}`);
@@ -1393,12 +1522,18 @@ export function prefix<T>(len: Length, inner: CoderType<T>): CoderType<T> {
  * @param len - Length CoderType (dynamic size), number (fixed size), Uint8Array (for terminator), or null (will parse until end of buffer)
  * @param le - Whether to use little-endian byte order.
  * @returns CoderType representing the string.
+ * @throws If the underlying byte layout is invalid. {@link Error}
+ * @throws On wrong string-coder argument or value types. {@link TypeError}
  * @example
+ * Use fixed-size, length-prefixed, or trailing UTF-8 strings.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const dynamicString = P.string(P.U16BE, false); // Dynamic size string (prefixed with P.U16BE number of string length)
  * const fixedString = P.string(10, false); // Fixed size string
  * const unknownString = P.string(null, false); // Unknown size string, will parse until end of buffer
  * const nullTerminatedString = P.cstring; // NUL-terminated string
  * const _cstring = P.string(Uint8Array.of(0)); // Same thing
+ * ```
  */
 export const string = (len: Length, le = false): CoderType<string> =>
   validate(apply(createBytes(len, le), utf8), (value) => {
@@ -1414,12 +1549,17 @@ type HexOpts = { isLE?: boolean; with0x?: boolean };
 /**
  * Hexadecimal string CoderType with a specified length, endianness, and optional 0x prefix.
  * @param len - Length CoderType (dynamic size), number (fixed size), Uint8Array (for terminator), or null (will parse until end of buffer)
- * @param le - Whether to use little-endian byte order.
- * @param withZero - Whether to include the 0x prefix.
+ * @param options - Hex-specific endianness and prefix options. See {@link HexOpts}. Use `isLE` to decode bytes as little-endian before converting to hex, and `with0x` to add and require a `0x` prefix.
  * @returns CoderType representing the hexadecimal string.
+ * @throws If the underlying byte layout or `0x` prefix handling is invalid. {@link Error}
+ * @throws On wrong hex-coder argument or value types. {@link TypeError}
  * @example
+ * Encode bytes as hex, optionally little-endian and with a `0x` prefix.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const dynamicHex = P.hex(P.U16BE, {isLE: false, with0x: true}); // Hex string with 0x prefix and U16BE length
  * const fixedHex = P.hex(32, {isLE: false, with0x: false}); // Fixed-length 32-byte hex string without 0x prefix
+ * ```
  */
 const createHex = (
   len: Length,
@@ -1445,11 +1585,17 @@ const createHex = (
 /**
  * Applies a base coder to a CoderType.
  * @param inner - The inner CoderType.
- * @param b - The base coder to apply.
+ * @param base - The base coder to apply.
  * @returns CoderType representing the transformed value.
+ * @throws If the wrapped coder or base conversion fails. {@link Error}
+ * @throws On wrong inner-coder or base-coder argument types. {@link TypeError}
  * @example
- * import { hex } from '@scure/base';
- * const hex = P.apply(P.bytes(32), hex); // will decode bytes into a hex string
+ * Reuse a base coder on top of a binary bytes coder.
+ * ```ts
+ * import * as P from 'micro-packed';
+ * import { hex as baseHex } from '@scure/base';
+ * const hexCoder = P.apply(P.bytes(32), baseHex); // will decode bytes into a hex string
+ * ```
  */
 export function apply<T, F>(inner: CoderType<T>, base: BaseCoder<T, F>): CoderType<F> {
   if (!isCoder(inner)) throw new Error(`apply: invalid inner value ${inner}`);
@@ -1480,7 +1626,12 @@ export function apply<T, F>(inner: CoderType<T>, base: BaseCoder<T, F>): CoderTy
  * Lazy CoderType that is evaluated at runtime.
  * @param fn - A function that returns the CoderType.
  * @returns CoderType representing the lazy value.
+ * @throws If the lazy factory returns an invalid coder or decode/encode fails. {@link Error}
+ * @throws On wrong lazy-factory argument types. {@link TypeError}
  * @example
+ * Define a recursive tree without referencing the coder before it exists.
+ * ```ts
+ * import * as P from 'micro-packed';
  * type Tree = { name: string; children: Tree[] };
  * const tree = P.struct({
  *   name: P.cstring,
@@ -1489,6 +1640,7 @@ export function apply<T, F>(inner: CoderType<T>, base: BaseCoder<T, F>): CoderTy
  *     P.lazy((): P.CoderType<Tree> => tree)
  *   ),
  * });
+ * ```
  */
 export function lazy<T>(fn: () => CoderType<T>): CoderType<T> {
   if (typeof fn !== 'function') throw new Error(`lazy: expected function, got ${typeof fn}`);
@@ -1503,11 +1655,16 @@ export function lazy<T>(fn: () => CoderType<T>): CoderType<T> {
  * @param flagValue - Marker value.
  * @param xor - Whether to invert the flag behavior.
  * @returns CoderType representing the flag value.
+ * @throws If the flag marker or encoded boolean state is invalid. {@link Error}
+ * @throws On wrong flag argument or value types. {@link TypeError}
  * @example
+ * Toggle a boolean based on whether a marker is present.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const flag = P.flag(new Uint8Array([0x01, 0x02])); // Encodes true as u8a([0x01, 0x02]), false as u8a([])
  * const flagXor = P.flag(new Uint8Array([0x01, 0x02]), true); // Encodes true as u8a([]), false as u8a([0x01, 0x02])
- * // Conditional encoding with flagged
  * const s = P.struct({ f: P.flag(new Uint8Array([0x0, 0x1])), f2: P.flagged('f', P.U32BE) });
+ * ```
  */
 export const flag = (flagValue: Bytes, xor = false): CoderType<boolean | undefined> => {
   if (!isBytes(flagValue))
@@ -1541,17 +1698,27 @@ export const flag = (flagValue: Bytes, xor = false): CoderType<boolean | undefin
  * @param inner - Inner CoderType for the value.
  * @param def - Optional default value to use if the flag is not present.
  * @returns CoderType representing the conditional value.
+ * @throws If the conditional coding setup or wrapped coder fails. {@link Error}
+ * @throws On wrong flag-path or inner-coder argument types. {@link TypeError}
  * @example
+ * Decode a field only when a sibling flag is present.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const s = P.struct({
  *   f: P.flag(new Uint8Array([0x0, 0x1])),
  *   f2: P.flagged('f', P.U32BE)
  * });
+ * ```
  *
  * @example
+ * Supply a default when the sibling flag is missing.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const s2 = P.struct({
  *   f: P.flag(new Uint8Array([0x0, 0x1])),
  *   f2: P.flagged('f', P.U32BE, 123)
  * });
+ * ```
  */
 export function flagged<T>(
   path: string | CoderType<boolean>,
@@ -1588,13 +1755,21 @@ export function flagged<T>(
  * @param inner - Inner CoderType for the value.
  * @param def - Optional default value to use if the flag is not present.
  * @returns CoderType representing the optional value.
+ * @throws If the optional coding setup or wrapped coder fails. {@link Error}
+ * @throws On wrong flag-coder or inner-coder argument types. {@link TypeError}
  * @example
- * // Will decode into P.U32BE only if flag present
+ * Decode a value only when a marker flag is present.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const optional = P.optional(P.flag(new Uint8Array([0x0, 0x1])), P.U32BE);
+ * ```
  *
  * @example
- * // If no flag present, will decode into default value
+ * Provide a fallback value when the marker flag is absent.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const optionalWithDefault = P.optional(P.flag(new Uint8Array([0x0, 0x1])), P.U32BE, 123);
+ * ```
  */
 export function optional<T>(
   flag: CoderType<boolean>,
@@ -1624,9 +1799,14 @@ export function optional<T>(
  * @param constant - Constant value.
  * @param check - Whether to check the decoded value against the constant.
  * @returns CoderType representing the magic value.
+ * @throws If the constant check fails or the wrapped coder rejects the value. {@link Error}
+ * @throws On wrong magic-coder argument types. {@link TypeError}
  * @example
- * // Always encodes constant as bytes using inner CoderType, throws if encoded value is not present
+ * Require a specific encoded value at this position in the stream.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const magicU8 = P.magic(P.U8, 0x42);
+ * ```
  */
 export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderType<undefined> {
   if (!isCoder(inner)) throw new Error(`magic: invalid inner value ${inner}`);
@@ -1654,9 +1834,14 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
  * Magic bytes CoderType that encodes/decodes a constant byte array or string.
  * @param constant - Constant byte array or string.
  * @returns CoderType representing the magic bytes.
+ * @throws If the constant check fails or the wrapped coder rejects the bytes. {@link Error}
+ * @throws On wrong magic-bytes argument types. {@link TypeError}
  * @example
- * // Always encodes undefined into byte representation of string 'MAGIC'
+ * Match a fixed byte or string marker without producing a value.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const magicBytes = P.magicBytes('MAGIC');
+ * ```
  */
 export const magicBytes = (constant: Bytes | string): CoderType<undefined> => {
   const c = typeof constant === 'string' ? utf8.decode(constant) : constant;
@@ -1670,9 +1855,13 @@ export const magicBytes = (constant: Bytes | string): CoderType<undefined> => {
  *
  * @param c - Constant value.
  * @returns CoderType representing the constant value.
+ * @throws On wrong constant values passed during encoding. {@link TypeError}
  * @example
- * // Always return 123 on decode, throws on encoding anything other than 123
+ * Hide an always-constant field behind a regular coder.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const constantU8 = P.constant(123);
+ * ```
  */
 export function constant<T>(c: T): CoderType<T> {
   return wrap({
@@ -1696,8 +1885,12 @@ function sizeof(fields: CoderType<any>[]): Option<number> {
  * Structure of composable primitives (C/Rust struct)
  * @param fields - Object mapping field names to CoderTypes.
  * @returns CoderType representing the structure.
+ * @throws If the structure definition or encoded struct value is invalid. {@link Error}
+ * @throws On wrong structure argument types. {@link TypeError}
  * @example
- * // Define a structure with a 32-bit big-endian unsigned integer, a string, and a nested structure
+ * Combine named fields into a single structured coder.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const myStruct = P.struct({
  *   id: P.U32BE,
  *   name: P.string(P.U8),
@@ -1706,6 +1899,7 @@ function sizeof(fields: CoderType<any>[]): Option<number> {
  *     value: P.I16LE
  *   })
  * });
+ * ```
  */
 export function struct<T extends Record<string, any>>(
   fields: StructRecord<T>
@@ -1740,8 +1934,14 @@ export function struct<T extends Record<string, any>>(
  * Tuple (unnamed structure) of CoderTypes. Same as struct but with unnamed fields.
  * @param fields - Array of CoderTypes.
  * @returns CoderType representing the tuple.
+ * @throws If the tuple definition or encoded tuple value is invalid. {@link Error}
+ * @throws On wrong tuple argument types. {@link TypeError}
  * @example
+ * Combine several coders into an ordered fixed-length tuple.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const myTuple = P.tuple([P.U8, P.U16LE, P.string(P.U8)]);
+ * ```
  */
 export function tuple<
   T extends ArrLike<CoderType<any>>,
@@ -1784,11 +1984,18 @@ export function tuple<
  * @param len - Length CoderType (dynamic size), number (fixed size), Uint8Array (for terminator), or null (will parse until end of buffer)
  * @param inner - CoderType for encoding/decoding each array item.
  * @returns CoderType representing the array.
+ * @throws If the array definition or encoded array elements are invalid. {@link Error}
+ * @throws On wrong array-coder argument types. {@link TypeError}
  * @example
+ * Build dynamic, fixed-size, and trailing arrays from one item coder.
+ * ```ts
+ * import * as P from 'micro-packed';
+ * const child = P.U8;
  * const a1 = P.array(P.U16BE, child); // Dynamic size array (prefixed with P.U16BE number of array length)
  * const a2 = P.array(4, child); // Fixed size array
  * const a3 = P.array(null, child); // Unknown size array, will parse until end of buffer
  * const a4 = P.array(Uint8Array.of(0), child); // zero-terminated array (NOTE: terminator can be any buffer)
+ * ```
  */
 export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
   if (!isCoder(inner)) throw new Error(`array: invalid inner value ${inner}`);
@@ -1858,19 +2065,23 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
  * @param inner - CoderType for encoded values.
  * @param variants - Object mapping string representations to encoded values.
  * @returns CoderType representing the mapping.
+ * @throws If the mapping variants or encoded values are invalid. {@link Error}
+ * @throws On wrong mapping argument types. {@link TypeError}
  * @example
- * // Map between numbers and strings
+ * Map encoded numbers to a small set of string labels.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const numberMap = P.map(P.U8, {
  *   'one': 1,
  *   'two': 2,
  *   'three': 3
  * });
  *
- * // Map between byte arrays and strings
  * const byteMap = P.map(P.bytes(2, false), {
  *   'ab': Uint8Array.from([0x61, 0x62]),
  *   'cd': Uint8Array.from([0x63, 0x64])
  * });
+ * ```
  */
 export function map<T>(inner: CoderType<T>, variants: Record<string, T>): CoderType<string> {
   if (!isCoder(inner)) throw new Error(`map: invalid inner value ${inner}`);
@@ -1896,21 +2107,25 @@ export function map<T>(inner: CoderType<T>, variants: Record<string, T>): CoderT
 }
 /**
  * Tagged union of CoderTypes, where the tag value determines which CoderType to use.
- * The decoded value will have the structure `{ TAG: number, data: ... }`.
+ * The decoded value will have the structure `\{ TAG: number, data: ... \}`.
  * @param tag - CoderType for the tag value.
  * @param variants - Object mapping tag values to CoderTypes.
  * @returns CoderType representing the tagged union.
+ * @throws If the tag table or selected variant is invalid. {@link Error}
+ * @throws On wrong tag-coder or variant-map argument types. {@link TypeError}
  * @example
- * // Tagged union of array, string, and number
- * // Depending on the value of the first byte, it will be decoded as an array, string, or number.
+ * Switch between payload coders based on a leading tag byte.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const taggedUnion = P.tag(P.U8, {
  *   0x01: P.array(P.U16LE, P.U8),
  *   0x02: P.string(P.U8),
  *   0x03: P.U32BE
  * });
  *
- * const encoded = taggedUnion.encode({ TAG: 0x01, data: 'hello' }); // Encodes the string 'hello' with tag 0x01
- * const decoded = taggedUnion.decode(encoded); // Decodes the encoded value back to { TAG: 0x01, data: 'hello' }
+ * const encoded = taggedUnion.encode({ TAG: 0x01, data: [1, 2] });
+ * const decoded = taggedUnion.decode(encoded);
+ * ```
  */
 export function tag<
   T extends Values<{
@@ -1951,18 +2166,22 @@ export function tag<
  * Mapping between encoded values, string representations, and CoderTypes using a tag CoderType.
  * @param tagCoder - CoderType for the tag value.
  * @param variants - Object mapping string representations to [tag value, CoderType] pairs.
- *  * @returns CoderType representing the mapping.
+ * @returns CoderType representing the mapping.
+ * @throws If the mapped-tag table or selected variant is invalid. {@link Error}
+ * @throws On wrong tag-coder or variant-map argument types. {@link TypeError}
  * @example
- * const cborValue: P.CoderType<CborValue> = P.mappedTag(P.bits(3), {
- *   uint: [0, cborUint], // An unsigned integer in the range 0..264-1 inclusive.
- *   negint: [1, cborNegint], // A negative integer in the range -264..-1 inclusive
- *   bytes: [2, P.lazy(() => cborLength(P.bytes, cborValue))], // A byte string.
- *   string: [3, P.lazy(() => cborLength(P.string, cborValue))], // A text string (utf8)
- *   array: [4, cborArrLength(P.lazy(() => cborValue))], // An array of data items
- *   map: [5, P.lazy(() => cborArrLength(P.tuple([cborValue, cborValue])))], // A map of pairs of data items
- *   tag: [6, P.tuple([cborUint, P.lazy(() => cborValue)] as const)], // A tagged data item ("tag") whose tag number
- *   simple: [7, cborSimple], // Floating-point numbers and simple values, as well as the "break" stop code
+ * Use string tags in TypeScript while encoding them as compact numeric tags.
+ * ```ts
+ * import * as P from 'micro-packed';
+ * type Value =
+ *   | { TAG: 'uint'; data: number }
+ *   | { TAG: 'array'; data: Value[] };
+ * const value: P.CoderType<Value> = P.mappedTag(P.U8, {
+ *   uint: [0, P.U8],
+ *   array: [1, P.array(P.U8, P.lazy(() => value))],
  * });
+ * value.encode({ TAG: 'array', data: [{ TAG: 'uint', data: 5 }] });
+ * ```
  */
 export function mappedTag<
   T extends Values<{
@@ -1988,9 +2207,15 @@ export function mappedTag<
  * @param names - An array of string names for the bitset values.
  * @param pad - Whether to pad the bitset to a multiple of 8 bits.
  * @returns CoderType representing the bitset.
- * @template Names
+ * @typeParam Names - Bit names preserved in the returned record.
+ * @throws If the bitset definition or encoded bitset values are invalid. {@link Error}
+ * @throws On wrong bitset argument types. {@link TypeError}
  * @example
+ * Pack several named booleans into a compact bitset.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const myBitset = P.bitset(['flag1', 'flag2', 'flag3', 'flag4'], true);
+ * ```
  */
 export function bitset<Names extends readonly string[]>(
   names: Names,
@@ -2021,7 +2246,17 @@ export function bitset<Names extends readonly string[]>(
     },
   });
 }
-/** Padding function which always returns zero */
+/**
+ * Padding function which always returns zero.
+ * @param i - Zero-based padding byte index.
+ * @returns Always returns `0`.
+ * @example
+ * Use the default zero padding helper with padLeft/padRight.
+ * ```ts
+ * import { U16BE, ZeroPad, padLeft } from 'micro-packed';
+ * padLeft(4, U16BE, ZeroPad);
+ * ```
+ */
 export const ZeroPad: PadFn = (_) => 0;
 
 function padLength(blockSize: number, len: number): number {
@@ -2034,12 +2269,16 @@ function padLength(blockSize: number, len: number): number {
  * @param inner - Inner CoderType to pad.
  * @param padFn - Padding function to use. If not provided, zero padding is used.
  * @returns CoderType representing the padded value.
+ * @throws If the padding configuration or wrapped coder is invalid. {@link Error}
+ * @throws On wrong padding argument types. {@link TypeError}
  * @example
- * // Pad a U32BE with a block size of 4 and zero padding
+ * Left-pad a value to the next block boundary.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const paddedU32BE = P.padLeft(4, P.U32BE);
  *
- * // Pad a string with a block size of 16 and custom padding
- * const paddedString = P.padLeft(16, P.string(P.U8), (i) => i + 1);
+ * const paddedBytes = P.padLeft(16, P.bytes(8), (i) => i + 1);
+ * ```
  */
 export function padLeft<T>(
   blockSize: number,
@@ -2071,12 +2310,16 @@ export function padLeft<T>(
  * @param inner - Inner CoderType to pad.
  * @param padFn - Padding function to use. If not provided, zero padding is used.
  * @returns CoderType representing the padded value.
+ * @throws If the padding configuration or wrapped coder is invalid. {@link Error}
+ * @throws On wrong padding argument types. {@link TypeError}
  * @example
- * // Pad a U16BE with a block size of 2 and zero padding
+ * Right-pad a value to the next block boundary.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const paddedU16BE = P.padRight(2, P.U16BE);
  *
- * // Pad a bytes with a block size of 8 and custom padding
  * const paddedBytes = P.padRight(8, P.bytes(null), (i) => i + 1);
+ * ```
  */
 export function padRight<T>(
   blockSize: number,
@@ -2115,8 +2358,14 @@ export function padRight<T>(
  * @param inner - CoderType for encoding/decoding the pointed value.
  * @param sized - Whether the pointer should have a fixed size.
  * @returns CoderType representing the pointer to the value.
+ * @throws If the pointer configuration or pointed value decoding is invalid. {@link Error}
+ * @throws On wrong pointer-coder argument types. {@link TypeError}
  * @example
+ * Jump to a pointed value and decode it with another coder.
+ * ```ts
+ * import * as P from 'micro-packed';
  * const pointerToU8 = P.pointer(P.U16BE, P.U8); // Pointer to a single U8 value
+ * ```
  */
 export function pointer<T>(
   ptr: CoderType<number>,

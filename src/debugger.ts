@@ -1,81 +1,92 @@
 import { base64, hex } from '@scure/base';
-import * as P from './index.ts';
-const Path = P._TEST.Path; // Internal, debug-only
+import {
+  _TEST,
+  EMPTY,
+  wrap as coderWrap,
+  utils,
+  type Bytes,
+  type CoderType,
+  type Reader,
+  type StructOut,
+  type Writer,
+  type _PathObjFn,
+} from './index.ts';
 
 const UNKNOWN = '(???)';
 const codes = { esc: 27, nl: 10 };
-const esc = String.fromCharCode(codes.esc);
-const nl = String.fromCharCode(codes.nl);
+const esc = /* @__PURE__ */ (() => String.fromCharCode(codes.esc))();
+const nl = /* @__PURE__ */ (() => String.fromCharCode(codes.nl))();
 
-const bold = esc + '[1m';
-const gray = esc + '[90m';
-const reset = esc + '[0m';
-const red = esc + '[31m';
-const green = esc + '[32m';
-const yellow = esc + '[33m';
+const bold = /* @__PURE__ */ (() => esc + '[1m')();
+const gray = /* @__PURE__ */ (() => esc + '[90m')();
+const reset = /* @__PURE__ */ (() => esc + '[0m')();
+const red = /* @__PURE__ */ (() => esc + '[31m')();
+const green = /* @__PURE__ */ (() => esc + '[32m')();
+const yellow = /* @__PURE__ */ (() => esc + '[33m')();
 
 type DebugPath = { start: number; end?: number; path: string; value?: any };
-class DebugReader extends P._TEST._Reader {
-  debugLst: DebugPath[] = [];
-  cur?: DebugPath;
-  get lastElm() {
-    if (this.debugLst.length) return this.debugLst[this.debugLst.length - 1];
-    return { start: 0, end: 0, path: '' };
-  }
-  pushObj(obj: P.StructOut, objFn: P._PathObjFn) {
-    return Path.pushObj(this.stack, obj, (cb) => {
-      objFn((field: string, fieldFn: Function) => {
-        cb(field, () => {
-          {
-            const last = this.lastElm;
-            if (last.end === undefined) last.end = this.pos;
-            else if (last.end !== this.pos) {
-              this.debugLst.push({
-                path: `${Path.path(this.stack)}/${UNKNOWN}`,
-                start: last.end,
-                end: this.pos,
-              });
-            }
-            this.cur = { path: `${Path.path(this.stack)}/${field}`, start: this.pos };
-          }
-          fieldFn();
-          {
-            // happens if pop after pop (exit from nested structure)
-            if (!this.cur) {
+const DebugReader = /* @__PURE__ */ (() =>
+  class DebugReader extends _TEST._Reader {
+    debugLst: DebugPath[] = [];
+    cur?: DebugPath;
+    get lastElm() {
+      if (this.debugLst.length) return this.debugLst[this.debugLst.length - 1];
+      return { start: 0, end: 0, path: '' };
+    }
+    pushObj(obj: StructOut, objFn: _PathObjFn) {
+      return _TEST.Path.pushObj(this.stack, obj, (cb) => {
+        objFn((field: string, fieldFn: Function) => {
+          cb(field, () => {
+            {
               const last = this.lastElm;
               if (last.end === undefined) last.end = this.pos;
               else if (last.end !== this.pos) {
                 this.debugLst.push({
+                  path: `${_TEST.Path.path(this.stack)}/${UNKNOWN}`,
                   start: last.end,
                   end: this.pos,
-                  path: last.path + `/${UNKNOWN}`,
                 });
               }
-            } else {
-              this.cur.end = this.pos;
-              const last = this.stack[this.stack.length - 1];
-              const lastItem = last.obj;
-              const lastField = last.field;
-              if (lastItem && lastField !== undefined) this.cur.value = lastItem[lastField];
-              this.debugLst.push(this.cur);
-              this.cur = undefined;
+              this.cur = { path: `${_TEST.Path.path(this.stack)}/${field}`, start: this.pos };
             }
-          }
+            fieldFn();
+            {
+              // happens if pop after pop (exit from nested structure)
+              if (!this.cur) {
+                const last = this.lastElm;
+                if (last.end === undefined) last.end = this.pos;
+                else if (last.end !== this.pos) {
+                  this.debugLst.push({
+                    start: last.end,
+                    end: this.pos,
+                    path: last.path + `/${UNKNOWN}`,
+                  });
+                }
+              } else {
+                this.cur.end = this.pos;
+                const last = this.stack[this.stack.length - 1];
+                const lastItem = last.obj;
+                const lastField = last.field;
+                if (lastItem && lastField !== undefined) this.cur.value = lastItem[lastField];
+                this.debugLst.push(this.cur);
+                this.cur = undefined;
+              }
+            }
+          });
         });
       });
-    });
-  }
+    }
 
-  finishDebug(): void {
-    const end = this.data.length;
-    if (this.cur) this.debugLst.push({ end, ...this.cur });
-    const last = this.lastElm;
-    if (!last || last.end !== end) this.debugLst.push({ start: this.pos, end, path: UNKNOWN });
-  }
-}
+    finishDebug(): void {
+      const end = this.data.length;
+      if (this.cur) this.debugLst.push({ end, ...this.cur });
+      const last = this.lastElm;
+      if (!last || last.end !== end) this.debugLst.push({ start: this.pos, end, path: UNKNOWN });
+    }
+  })();
 
-function toBytes(data: string | P.Bytes): P.Bytes {
-  if (P.utils.isBytes(data)) return data;
+function toBytes(data: string | Bytes): Bytes {
+  if (utils.isBytes(data)) return data;
   if (typeof data !== 'string') throw new Error('PD: data should be string or Uint8Array');
   try {
     return base64.decode(data);
@@ -86,8 +97,8 @@ function toBytes(data: string | P.Bytes): P.Bytes {
   throw new Error(`PD: data has unknown string format: ${data}`);
 }
 
-type DebugData = { path: string; data: P.Bytes; value?: any };
-function mapData(lst: DebugPath[], data: P.Bytes): DebugData[] {
+type DebugData = { path: string; data: Bytes; value?: any };
+function mapData(lst: DebugPath[], data: Bytes): DebugData[] {
   let end = 0;
   const res: DebugData[] = [];
   for (const elm of lst) {
@@ -123,6 +134,17 @@ function wrap(s: string, padding: number = 0) {
   return `${s}${reset}...`;
 }
 
+/**
+ * Print an array of rows as a formatted terminal table.
+ * @param data - Rows to print.
+ * @throws If the table has no printable columns or rows. {@link Error}
+ * @example
+ * Print a quick table with auto-sized columns.
+ * ```ts
+ * import { table } from 'micro-packed/debugger.js';
+ * table([{ Name: 'field', Value: '01ff' }]);
+ * ```
+ */
 export function table(data: any[]): void {
   let res: string[] = [];
   const str = (v: any) => (v === undefined ? '' : '' + v);
@@ -163,7 +185,7 @@ export function table(data: any[]): void {
   console.log(res.join(nl));
 }
 
-function fmtData(data: P.Bytes, perLine = 8) {
+function fmtData(data: Bytes, perLine = 8) {
   const res = [];
   for (let i = 0; i < data.length; i += perLine) {
     res.push(hex.encode(data.slice(i, i + perLine)));
@@ -172,7 +194,7 @@ function fmtData(data: P.Bytes, perLine = 8) {
 }
 
 function fmtValue(value: any) {
-  if (P.utils.isBytes(value)) return `b(${green}${hex.encode(value)}${reset} len=${value.length})`;
+  if (utils.isBytes(value)) return `b(${green}${hex.encode(value)}${reset} len=${value.length})`;
   if (typeof value === 'string') return `s(${green}"${value}"${reset} len=${value.length})`;
   if (typeof value === 'number' || typeof value === 'bigint') return `n(${value})`;
   // console.log('fmt', value);
@@ -180,9 +202,24 @@ function fmtValue(value: any) {
   return '' + value;
 }
 
+/**
+ * Decode input while printing the partially decoded map when an error occurs.
+ * @param coder - Coder used for the decode step.
+ * @param data - Hex, base64, or raw bytes to decode.
+ * @param forcePrint - Print the decoded map even when decoding succeeds.
+ * @returns Decoded value produced by `coder`.
+ * @throws If decoding the input fails. {@link Error}
+ * @example
+ * Inspect a failing decode and print the consumed fields before rethrowing.
+ * ```ts
+ * import { U32LE } from 'micro-packed';
+ * import { decode } from 'micro-packed/debugger.js';
+ * decode(U32LE, Uint8Array.of(1, 0, 0, 0));
+ * ```
+ */
 export function decode(
-  coder: P.CoderType<any>,
-  data: string | P.Bytes,
+  coder: CoderType<any>,
+  data: string | Bytes,
   forcePrint = false
 ): ReturnType<(typeof coder)['decode']> {
   data = toBytes(data);
@@ -213,7 +250,7 @@ export function decode(
   return res;
 }
 
-function getMap(coder: P.CoderType<any>, data: string | P.Bytes) {
+function getMap(coder: CoderType<any>, data: string | Bytes) {
   data = toBytes(data);
   const r = new DebugReader(data);
   coder.decodeStream(r);
@@ -222,7 +259,7 @@ function getMap(coder: P.CoderType<any>, data: string | P.Bytes) {
   return mapData(r.debugLst, data);
 }
 
-function diffData(a: P.Bytes, e: P.Bytes) {
+function diffData(a: Bytes, e: Bytes) {
   const len = Math.max(a.length, e.length);
   let outA = '',
     outE = '';
@@ -243,7 +280,7 @@ function diffPath(a: string, e: string) {
   if (a === e) return a;
   return `A: ${red}${a}${reset}${nl}E: ${green}${e}${reset}`;
 }
-function diffLength(a: P.Bytes, e: P.Bytes) {
+function diffLength(a: Bytes, e: Bytes) {
   const [aLen, eLen] = [a.length, e.length];
   if (aLen === eLen) return aLen;
   return `A: ${red}${aLen}${reset}${nl}E: ${green}${eLen}${reset}`;
@@ -255,10 +292,26 @@ function diffValue(a: any, e: any) {
   return `A: ${red}${aV}${reset}${nl}E: ${green}${eV}${reset}`;
 }
 
+/**
+ * Print a field-by-field diff between two encoded payloads.
+ * @param coder - Coder used to decode both payloads before diffing.
+ * @param actual - Actual bytes or encoded string.
+ * @param expected - Expected bytes or encoded string.
+ * @param skipSame - Skip rows whose decoded values are identical.
+ * @throws If either payload cannot be decoded for diffing. {@link Error}
+ * @example
+ * Compare two encoded payloads field by field.
+ * ```ts
+ * import { U16BE, struct } from 'micro-packed';
+ * import { diff } from 'micro-packed/debugger.js';
+ * const coder = struct({ value: U16BE });
+ * diff(coder, Uint8Array.of(0, 1), Uint8Array.of(0, 2), false);
+ * ```
+ */
 export function diff(
-  coder: P.CoderType<any>,
-  actual: string | P.Bytes,
-  expected: string | P.Bytes,
+  coder: CoderType<any>,
+  actual: string | Bytes,
+  expected: string | Bytes,
   skipSame = true
 ): void {
   // @ts-ignore
@@ -269,10 +322,10 @@ export function diff(
   ];
   const len = Math.max(_actual.length, _expected.length);
   const data = [];
-  const DEF = { data: P.EMPTY, path: '' };
+  const DEF = { data: EMPTY, path: '' };
   for (let i = 0; i < len; i++) {
     const [a, e] = [_actual[i] || DEF, _expected[i] || DEF];
-    if (P.utils.equalBytes(a.data, e.data) && skipSame) continue;
+    if (utils.equalBytes(a.data, e.data) && skipSame) continue;
     const [adata, edata] = diffData(a.data, e.data);
     data.push({
       'Data (A)': adata,
@@ -291,19 +344,25 @@ export function diff(
  * Wraps a CoderType with debug logging for encoding and decoding operations.
  * @param inner - Inner CoderType to wrap.
  * @returns Inner wrapped in debug prints via console.log.
+ * @throws If the inner coder is invalid. {@link Error}
  * @example
- * const debugInt = P.debug(P.U32LE); // Will print info to console on encoding/decoding
+ * Print each encode/decode step while keeping the original coder API.
+ * ```ts
+ * import { U32LE } from 'micro-packed';
+ * import { debug } from 'micro-packed/debugger.js';
+ * const debugInt = debug(U32LE); // Will print info to console on encoding/decoding
+ * ```
  */
-export function debug<T>(inner: P.CoderType<T>): P.CoderType<T> {
-  if (!P.utils.isCoder(inner)) throw new Error(`debug: invalid inner value ${inner}`);
-  const log = (name: string, rw: P.Reader | P.Writer, value: any) => {
+export function debug<T>(inner: CoderType<T>): CoderType<T> {
+  if (!utils.isCoder(inner)) throw new Error(`debug: invalid inner value ${inner}`);
+  const log = (name: string, rw: Reader | Writer, value: any) => {
     // @ts-ignore
-    console.log(`DEBUG/${name}(${Path.path(rw.stack)}):`, { type: typeof value, value });
+    console.log(`DEBUG/${name}(${_TEST.Path.path(rw.stack)}):`, { type: typeof value, value });
     return value;
   };
-  return P.wrap({
+  return coderWrap({
     size: inner.size,
-    encodeStream: (w: P.Writer, value: T) => inner.encodeStream(w, log('encode', w, value)),
-    decodeStream: (r: P.Reader): T => log('decode', r, inner.decodeStream(r)),
+    encodeStream: (w: Writer, value: T) => inner.encodeStream(w, log('encode', w, value)),
+    decodeStream: (r: Reader): T => log('decode', r, inner.decodeStream(r)),
   });
 }

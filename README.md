@@ -80,7 +80,9 @@ Bytes CoderType with a specified length and endianness.
 | len   | Length CoderType, number, Uint8Array (for terminator), or null. |
 | le    | Whether to use little-endian byte order.                        |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 // Dynamic size bytes (prefixed with P.U16BE number of bytes length)
 const dynamicBytes = P.bytes(P.U16BE, false);
 const fixedBytes = P.bytes(32, false); // Fixed size bytes
@@ -102,7 +104,9 @@ String CoderType with a specified length and endianness.
 | len   | CoderType, number, Uint8Array (terminator) or null |
 | le    | Whether to use little-endian byte order.           |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 const dynamicString = P.string(P.U16BE, false); // Dynamic size string (prefixed with P.U16BE number of string length)
 const fixedString = P.string(10, false); // Fixed size string
 const unknownString = P.string(null, false); // Unknown size string, will parse until end of buffer
@@ -122,7 +126,9 @@ Hexadecimal string CoderType with a specified length, endianness, and optional 0
 | isLE   | Whether to use little-endian byte order.                                                                                    |
 | with0x | Whether to include the 0x prefix.                                                                                           |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 const dynamicHex = P.hex(P.U16BE, { isLE: false, with0x: true }); // Hex string with 0x prefix and U16BE length
 const fixedHex = P.hex(32, { isLE: false, with0x: false }); // Fixed-length 32-byte hex string without 0x prefix
 ```
@@ -139,7 +145,9 @@ The actual value is not written to or read from any byte stream; it's used only 
 | ----- | --------------- |
 | c     | Constant value. |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 // Always return 123 on decode, throws on encoding anything other than 123
 const constantU8 = P.constant(123);
 ```
@@ -159,7 +167,9 @@ same region of memory cannot be read multiple times.
 | inner | CoderType for encoding/decoding the pointed value. |
 | sized | Whether the pointer should have a fixed size.      |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 const pointerToU8 = P.pointer(P.U16BE, P.U8); // Pointer to a single U8 value
 ```
 
@@ -174,7 +184,10 @@ Array of items (inner type) with a specified length.
 | len   | Length CoderType (dynamic size), number (fixed size), Uint8Array (terminator), or null (will parse until end of buffer) |
 | inner | CoderType for encoding/decoding each array item.                                                                        |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
+const child = P.U8;
 const a1 = P.array(P.U16BE, child); // Dynamic size array (prefixed with P.U16BE number of array length)
 const a2 = P.array(4, child); // Fixed size array
 const a3 = P.array(null, child); // Unknown size array, will parse until end of buffer
@@ -191,7 +204,9 @@ Structure of composable primitives (C/Rust struct)
 | ------ | ----------------------------------------- |
 | fields | Object mapping field names to CoderTypes. |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 // Define a structure with a 32-bit big-endian unsigned integer, a string, and a nested structure
 const myStruct = P.struct({
   id: P.U32BE,
@@ -211,7 +226,9 @@ Tuple (unnamed structure) of CoderTypes. Same as struct but with unnamed fields.
 | ------ | -------------------- |
 | fields | Array of CoderTypes. |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 const myTuple = P.tuple([P.U8, P.U16LE, P.string(P.U8)]);
 ```
 
@@ -227,6 +244,8 @@ Mapping between encoded values and string representations.
 | variants | Object mapping string representations to encoded values. |
 
 ```ts
+import * as P from 'micro-packed';
+
 // Map between numbers and strings
 const numberMap = P.map(P.U8, {
   one: 1,
@@ -251,7 +270,9 @@ The decoded value will have the structure `{ TAG: number, data: ... }`.
 | tag      | CoderType for the tag value.             |
 | variants | Object mapping tag values to CoderTypes. |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 // Tagged union of array, string, and number
 // Depending on the value of the first byte, it will be decoded as an array, string, or number.
 const taggedUnion = P.tag(P.U8, {
@@ -260,8 +281,8 @@ const taggedUnion = P.tag(P.U8, {
   0x03: P.U32BE,
 });
 
-const encoded = taggedUnion.encode({ TAG: 0x01, data: 'hello' }); // Encodes the string 'hello' with tag 0x01
-const decoded = taggedUnion.decode(encoded); // Decodes the encoded value back to { TAG: 0x01, data: 'hello' }
+const encoded = taggedUnion.encode({ TAG: 0x02, data: 'hello' }); // Encodes the string 'hello' with tag 0x02
+const decoded = taggedUnion.decode(encoded); // Decodes the encoded value back to { TAG: 0x02, data: 'hello' }
 ```
 
 ### P.mappedTag
@@ -273,17 +294,19 @@ Mapping between encoded values, string representations, and CoderTypes using a t
 | tagCoder | CoderType for the tag value.                                           |
 | variants | Object mapping string representations to [tag value, CoderType] pairs. |
 
-```js
-const cborValue: P.CoderType<CborValue> = P.mappedTag(P.bits(3), {
-  uint: [0, cborUint], // An unsigned integer in the range 0..264-1 inclusive.
-  negint: [1, cborNegint], // A negative integer in the range -264..-1 inclusive
-  bytes: [2, P.lazy(() => cborLength(P.bytes, cborValue))], // A byte string.
-  string: [3, P.lazy(() => cborLength(P.string, cborValue))], // A text string (utf8)
-  array: [4, cborArrLength(P.lazy(() => cborValue))], // An array of data items
-  map: [5, P.lazy(() => cborArrLength(P.tuple([cborValue, cborValue])))], // A map of pairs of data items
-  tag: [6, P.tuple([cborUint, P.lazy(() => cborValue)] as const)], // A tagged data item ("tag") whose tag number
-  simple: [7, cborSimple], // Floating-point numbers and simple values, as well as the "break" stop code
+```ts
+import * as P from 'micro-packed';
+
+type Value =
+  | { TAG: 'uint'; data: number }
+  | { TAG: 'array'; data: Value[] };
+
+const value: P.CoderType<Value> = P.mappedTag(P.U8, {
+  uint: [0, P.U8],
+  array: [1, P.array(P.U8, P.lazy(() => value))],
 });
+
+value.encode({ TAG: 'array', data: [{ TAG: 'uint', data: 5 }] });
 ```
 
 ## Padding, prefix, magic
@@ -300,12 +323,14 @@ Pads a CoderType with a specified block size and padding function on the left si
 | inner     | Inner CoderType to pad.                                         |
 | padFn     | Padding function to use. If not provided, zero padding is used. |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 // Pad a U32BE with a block size of 4 and zero padding
 const paddedU32BE = P.padLeft(4, P.U32BE);
 
-// Pad a string with a block size of 16 and custom padding
-const paddedString = P.padLeft(16, P.string(P.U8), (i) => i + 1);
+// Pad a fixed-size string with a block size of 16 and custom padding
+const paddedString = P.padLeft(16, P.string(8), (i) => i + 1);
 ```
 
 ### P.padRight
@@ -321,6 +346,8 @@ Pads a CoderType with a specified block size and padding function on the right s
 | padFn     | Padding function to use. If not provided, zero padding is used. |
 
 ```js
+import * as P from 'micro-packed';
+
 // Pad a U16BE with a block size of 2 and zero padding
 const paddedU16BE = P.padRight(2, P.U16BE);
 
@@ -344,6 +371,8 @@ Prefix-encoded value using a length prefix and an inner CoderType.
 | inner | CoderType for the actual value to be prefix-encoded.            |
 
 ```js
+import * as P from 'micro-packed';
+
 const dynamicPrefix = P.prefix(P.U16BE, P.bytes(null)); // Dynamic size prefix (prefixed with P.U16BE number of bytes length)
 const fixedPrefix = P.prefix(10, P.bytes(null)); // Fixed size prefix (always 10 bytes)
 ```
@@ -361,7 +390,9 @@ This can be used to check for a specific magic value or sequence of bytes at the
 | constant | Constant value.                                          |
 | check    | Whether to check the decoded value against the constant. |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 // Always encodes constant as bytes using inner CoderType, throws if encoded value is not present
 const magicU8 = P.magic(P.U8, 0x42);
 ```
@@ -377,6 +408,8 @@ Magic bytes CoderType that encodes/decodes a constant byte array or string.
 | constant | Constant byte array or string. |
 
 ```js
+import * as P from 'micro-packed';
+
 // Always encodes undefined into byte representation of string 'MAGIC'
 const magicBytes = P.magicBytes('MAGIC');
 ```
@@ -395,6 +428,8 @@ Flag CoderType that encodes/decodes a boolean value based on the presence of a m
 | xor       | Whether to invert the flag behavior. |
 
 ```js
+import * as P from 'micro-packed';
+
 const flag = P.flag(new Uint8Array([0x01, 0x02])); // Encodes true as u8a([0x01, 0x02]), false as u8a([])
 const flagXor = P.flag(new Uint8Array([0x01, 0x02]), true); // Encodes true as u8a([]), false as u8a([0x01, 0x02])
 // Conditional encoding with flagged
@@ -426,16 +461,22 @@ Optional CoderType that encodes/decodes a value based on a flag.
 | def   | Optional default value to use if the flag is not present. |
 
 ```js
+import * as P from 'micro-packed';
+
 // Will decode into P.U32BE only if flag present
 const optional = P.optional(P.flag(new Uint8Array([0x0, 0x1])), P.U32BE);
 ```
 
 ```js
+import * as P from 'micro-packed';
+
 // If no flag present, will decode into default value
 const optionalWithDefault = P.optional(P.flag(new Uint8Array([0x0, 0x1])), P.U32BE, 123);
 ```
 
 ```js
+import * as P from 'micro-packed';
+
 const s = P.struct({
   f: P.flag(new Uint8Array([0x0, 0x1])),
   f2: P.flagged('f', P.U32BE),
@@ -443,6 +484,8 @@ const s = P.struct({
 ```
 
 ```js
+import * as P from 'micro-packed';
+
 const s2 = P.struct({
   f: P.flag(new Uint8Array([0x0, 0x1])),
   f2: P.flagged('f', P.U32BE, 123),
@@ -460,11 +503,15 @@ Applies a base coder to a CoderType.
 | Param | Description              |
 | ----- | ------------------------ |
 | inner | The inner CoderType.     |
-| b     | The base coder to apply. |
+| base  | The base coder to apply. |
 
-```js
-import { hex } from '@scure/base';
-const hex = P.apply(P.bytes(32), hex); // will decode bytes into a hex string
+> `npm install @scure/base`
+
+```ts
+import * as P from 'micro-packed';
+import { hex as hexBase } from '@scure/base';
+
+const hexCoder = P.apply(P.bytes(32), hexBase); // will decode bytes into a hex string
 ```
 
 ### P.wrap
@@ -475,19 +522,21 @@ Wraps a stream encoder into a generic encoder and optionally validation function
 | ----- | ---------------------------------------------- |
 | inner | BytesCoderStream & { validate?: Validate<T> }. |
 
-```js
+```ts
+import * as P from 'micro-packed';
+
 const U8 = P.wrap({
-  encodeStream: (w: Writer, value: number) => w.byte(value),
-  decodeStream: (r: Reader): number => r.byte()
+  encodeStream: (w, value) => w.byte(value),
+  decodeStream: (r) => r.byte(),
 });
 
 const checkedU8 = P.wrap({
-  encodeStream: (w: Writer, value: number) => w.byte(value),
-  decodeStream: (r: Reader): number => r.byte()
-  validate: (n: number) => {
-   if (n > 10) throw new Error(`${n} > 10`);
-   return n;
-  }
+  encodeStream: (w, value) => w.byte(value),
+  decodeStream: (r) => r.byte(),
+  validate: (n) => {
+    if (n > 10) throw new Error(`${n} > 10`);
+    return n;
+  },
 });
 ```
 
@@ -501,14 +550,12 @@ Lazy CoderType that is evaluated at runtime.
 | ----- | -------------------------------------- |
 | fn    | A function that returns the CoderType. |
 
-```js
-type Tree = { name: string; children: Tree[] };
+```ts
+import * as P from 'micro-packed';
+
 const tree = P.struct({
   name: P.cstring,
-  children: P.array(
-    P.U16BE,
-    P.lazy((): P.CoderType<Tree> => tree)
-  ),
+  children: P.array(P.U16BE, P.lazy(() => tree)),
 });
 ```
 
@@ -533,6 +580,8 @@ NOTE: Structure should parse whole amount of bytes before it can start parsing b
 | len   | Number of bits to parse. |
 
 ```js
+import * as P from 'micro-packed';
+
 const s = P.struct({ magic: P.bits(1), version: P.bits(1), tag: P.bits(4), len: P.bits(2) });
 ```
 
@@ -548,6 +597,8 @@ Bitset of boolean values with optional padding.
 | pad   | Whether to pad the bitset to a multiple of 8 bits. |
 
 ```js
+import * as P from 'micro-packed';
+
 const myBitset = P.bitset(['flag1', 'flag2', 'flag3', 'flag4'], true);
 ```
 
@@ -565,7 +616,9 @@ Validates a value before encoding and after decoding using a provided function.
 | fn    | The validation function. |
 
 ```js
-const val = (n: number) => {
+import * as P from 'micro-packed';
+
+const val = (n) => {
   if (n > 10) throw new Error(`${n} > 10`);
   return n;
 };
@@ -581,9 +634,11 @@ Dictionary is dynamic type like: `[key: string, value: any][]`
 **Returns**: base coder that encodes/decodes between arrays of key-value tuples and dictionaries.
 
 ```js
-const dict: P.CoderType<Record<string, number>> = P.apply(
- P.array(P.U16BE, P.tuple([P.cstring, P.U32LE] as const)),
- P.coders.dict()
+import * as P from 'micro-packed';
+
+const dict = P.apply(
+  P.array(P.U16BE, P.tuple([P.cstring, P.U32LE])),
+  P.coders.dict()
 );
 ```
 
@@ -599,6 +654,8 @@ Base coder for working with decimal numbers.
 | round     | <code>false</code> | Round fraction part if bigger than precision (throws error by default) |
 
 ```js
+import * as P from 'micro-packed';
+
 const decimal8 = P.coders.decimal(8);
 decimal8.encode(630880845n); // '6.30880845'
 decimal8.decode('6.30880845'); // 630880845n
@@ -629,7 +686,7 @@ There is a second optional module for debugging into console.
 
 ```ts
 import * as P from 'micro-packed';
-import * as PD from 'micro-packed/debugger';
+import * as PD from 'micro-packed/debugger.js';
 
 const debugInt = PD.debug(P.U32LE); // Will print info to console
 // PD.decode(<coder>, data);

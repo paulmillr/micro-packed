@@ -1082,6 +1082,14 @@ describe('structures', () => {
       throws(() => c.encode(101));
       throws(() => c.decode(new Uint8Array([101])));
     });
+    should('validator constructors', () => {
+      throws(() => P.validate(P.U8, 1 as any), TypeError);
+      throws(() => P.U8.encode('x' as any), TypeError);
+      throws(() => P.U8.encode(256), RangeError);
+      throws(() => P.bool.encode(1 as any), TypeError);
+      throws(() => P.bytes(1, 1 as any), TypeError);
+      throws(() => P.bytes(null).encode('x' as any), TypeError);
+    });
     should('debug', () => {
       const s = PD.debug(
         P.struct({
