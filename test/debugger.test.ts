@@ -1,6 +1,6 @@
 import { should } from '@paulmillr/jsbt/test.js';
-import { hex } from '@scure/base';
-import { throws } from 'node:assert';
+import { base64, hex } from '@scure/base';
+import { deepStrictEqual as eql, throws } from 'node:assert';
 import * as PD from '../src/debugger.ts';
 import * as P from '../src/index.ts';
 
@@ -9,6 +9,27 @@ const testStruct = P.struct({
   b: P.cstring,
   c: P.array(P.U8, P.U16BE),
 });
+const mute = <T>(fn: () => T): T => {
+  const oldLog = console.log;
+  console.log = () => {};
+  try {
+    return fn();
+  } finally {
+    console.log = oldLog;
+  }
+};
+const capture = <T>(fn: () => T): { logs: string[]; value: T } => {
+  const oldLog = console.log;
+  const logs: string[] = [];
+  console.log = (msg: string) => {
+    logs.push(msg);
+  };
+  try {
+    return { logs, value: fn() };
+  } finally {
+    console.log = oldLog;
+  }
+};
 
 should('Basic', () => {
   const enc = testStruct.encode({ a: 1234, b: 'test', c: [1, 2, 3] });
@@ -18,6 +39,125 @@ should('Basic', () => {
 should('Fail to decode', () => {
   const enc = testStruct.encode({ a: 1234, b: 'test', c: [1, 2, 3] });
   throws(() => PD.decode(testStruct, P.utils.concatBytes(enc, hex.decode('0102030405'))));
+});
+
+should('chrWidth tabs', () => {
+  eql(PD._TESTS.chrWidth('\t\t'), PD._TESTS.chrWidth('    '));
+  eql(PD._TESTS.chrWidth('a\tb\t'), PD._TESTS.chrWidth('a  b  '));
+  const oldLog = console.log;
+  const oldColumns = process.stdout.columns;
+  let out = '';
+  console.log = (msg: string) => {
+    out = msg;
+  };
+  process.stdout.columns = 120;
+  try {
+    PD.table([
+      { Key: '\t\t', Value: 'x' },
+      { Key: '    ', Value: 'y' },
+    ]);
+  } finally {
+    console.log = oldLog;
+    process.stdout.columns = oldColumns;
+  }
+  const e = '\x1b';
+  const bar = String.fromCharCode(0x2502);
+  const line = String.fromCharCode(0x2500);
+  const cross = String.fromCharCode(0x253c);
+  const bottom = String.fromCharCode(0x2534);
+  const gray = `${e}[90m`;
+  const reset = `${e}[0m`;
+  const bold = `${e}[1m`;
+  const mid = `${line.repeat(6)}${cross}${line.repeat(7)}`;
+  const end = `${line.repeat(6)}${bottom}${line.repeat(7)}`;
+  eql(
+    out,
+    [
+      ` ${bold}Key  ${reset}${gray}${bar}${reset} ${bold}Value${reset}`,
+      `${reset}${gray}${mid}${reset}`,
+      ` \t\t ${reset}${gray}${bar}${reset} x     `,
+      `${reset}${gray}${mid}${reset}`,
+      `      ${reset}${gray}${bar}${reset} y     `,
+      `${reset}${gray}${end}${reset}`,
+    ].join('\n')
+  );
+});
+
+should('primitive debug map', () => {
+  eql(
+    mute(() => ({
+      bool: PD.decode(P.bool, Uint8Array.of(1), true),
+      u8: PD.decode(P.U8, Uint8Array.of(1), true),
+      u16: PD.decode(P.U16BE, Uint8Array.of(1, 2), true),
+      zero: PD.decode(P.constant(123), Uint8Array.of(), true),
+    })),
+    { bool: true, u8: 1, u16: 258, zero: 123 }
+  );
+  eql(
+    mute(() => {
+      PD.diff(P.U8, Uint8Array.of(1), Uint8Array.of(1), false);
+      PD.diff(P.bool, Uint8Array.of(0), Uint8Array.of(1));
+      return 'ok';
+    }),
+    'ok'
+  );
+});
+
+should('diff empty result', () => {
+  const coder = P.struct({ a: P.U8 });
+  eql(
+    mute(() => {
+      PD.diff(P.U8, Uint8Array.of(1), Uint8Array.of(1));
+      PD.diff(coder, Uint8Array.of(1), Uint8Array.of(1));
+      PD.diff(coder, Uint8Array.of(1), Uint8Array.of(1), true);
+      return 'ok';
+    }),
+    'ok'
+  );
+});
+
+should('string bytes prefer lowercase hex', () => {
+  const lower = hex.decode('cafebabe');
+  eql(PD.decode(P.bytes(null), 'cafebabe'), lower);
+  eql(
+    capture(() => {
+      PD.diff(P.bytes(null), 'cafebabe', lower);
+      return 'ok';
+    }),
+    { logs: ['==== DIFF ====', '==== /DIFF ===='], value: 'ok' }
+  );
+  eql(PD.decode(P.bytes(null), 'CAFEBABE'), base64.decode('CAFEBABE'));
+});
+
+should('wrap unknown columns', () => {
+  const oldColumns = process.stdout.columns;
+  process.stdout.columns = undefined;
+  try {
+    const e = '\x1b';
+    const line = String.fromCharCode(0x2500);
+    const gray = `${e}[90m`;
+    const reset = `${e}[0m`;
+    const bold = `${e}[1m`;
+    eql(
+      capture(() => {
+        PD.table([{ A: 'abc' }]);
+        return 'ok';
+      }),
+      {
+        logs: [
+          [
+            ` ${bold}A  ${reset}`,
+            `${reset}${gray}${line.repeat(5)}${reset}`,
+            ' abc ',
+            `${reset}${gray}${line.repeat(5)}${reset}`,
+          ].join('\n'),
+        ],
+        value: 'ok',
+      }
+    );
+  } finally {
+    process.stdout.columns = oldColumns;
+  }
 });
 
 should('PSBT1', () => {

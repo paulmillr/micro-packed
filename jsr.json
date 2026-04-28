@@ -6,7 +6,7 @@
     "./debugger.js": "./src/debugger.ts"
   },
   "imports": {
-    "@scure/base": "jsr:@scure/base@~2.0.0"
+    "@scure/base": "jsr:@scure/base@~2.2.0"
   },
   "publish": {
     "include": [

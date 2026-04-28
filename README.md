@@ -253,10 +253,10 @@ const numberMap = P.map(P.U8, {
   three: 3,
 });
 
-// Map between byte arrays and strings
-const byteMap = P.map(P.bytes(2, false), {
-  ab: Uint8Array.from([0x61, 0x62]),
-  cd: Uint8Array.from([0x63, 0x64]),
+// Map between byte strings and labels
+const byteMap = P.map(P.hex(2), {
+  ab: '6162',
+  cd: '6364',
 });
 ```
 

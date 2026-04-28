@@ -2,11 +2,16 @@ import { describe, should } from '@paulmillr/jsbt/test.js';
 import * as fc from 'fast-check';
 import { deepStrictEqual, throws } from 'node:assert';
 import { hex, utils } from '../src/index.ts';
-import { getTypeTests } from './utils.js';
+import { getTypeTests } from './utils.ts';
 
 const concatBytes = utils.concatBytes;
 const hexToBytes = hex(null).encode;
 const bytesToHex = hex(null).decode;
+const hexString = fc.string({
+  minLength: 2,
+  maxLength: 64,
+  unit: fc.constantFrom(...'0123456789abcdef'),
+});
 
 describe('utils', () => {
   const staticHexVectors = [
@@ -32,7 +37,7 @@ describe('utils', () => {
   });
   should('hexToBytes <=> bytesToHex roundtrip', () =>
     fc.assert(
-      fc.property(fc.hexaString({ minLength: 2, maxLength: 64 }), (hex) => {
+      fc.property(hexString, (hex) => {
         if (hex.length % 2 !== 0) return;
         deepStrictEqual(hex, bytesToHex(hexToBytes(hex)));
         deepStrictEqual(hex, bytesToHex(hexToBytes(hex.toUpperCase())));
@@ -64,7 +69,10 @@ describe('utils', () => {
     fc.assert(
       fc.property(fc.uint8Array(), fc.uint8Array(), fc.uint8Array(), (a, b, c) => {
         const expected = Uint8Array.from(Buffer.concat([a, b, c]));
-        deepStrictEqual(concatBytes(a.slice(), b.slice(), c.slice()), expected);
+        deepStrictEqual(
+          concatBytes(Uint8Array.from(a), Uint8Array.from(b), Uint8Array.from(c)),
+          expected
+        );
       })
     )
   );

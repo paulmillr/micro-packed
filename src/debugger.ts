@@ -1,13 +1,15 @@
 import { base64, hex } from '@scure/base';
 import {
-  _TEST,
   EMPTY,
+  _TEST,
   wrap as coderWrap,
   utils,
   type Bytes,
   type CoderType,
   type Reader,
   type StructOut,
+  type TArg,
+  type TRet,
   type Writer,
   type _PathObjFn,
 } from './index.ts';
@@ -52,6 +54,8 @@ const DebugReader = /* @__PURE__ */ (() =>
             fieldFn();
             {
               // happens if pop after pop (exit from nested structure)
+              // Nested struct-like fields emit child entries instead of a parent entry,
+              // so unwinding leaves `this.cur` cleared by the inner callback.
               if (!this.cur) {
                 const last = this.lastElm;
                 if (last.end === undefined) last.end = this.pos;
@@ -81,54 +85,69 @@ const DebugReader = /* @__PURE__ */ (() =>
       const end = this.data.length;
       if (this.cur) this.debugLst.push({ end, ...this.cur });
       const last = this.lastElm;
-      if (!last || last.end !== end) this.debugLst.push({ start: this.pos, end, path: UNKNOWN });
+      // Primitive coders never call pushObj(), so the fallback row must begin at the previous
+      // mapped end (0 for an empty map) instead of the already-consumed cursor position.
+      if (last.end !== undefined && last.end !== end)
+        this.debugLst.push({ start: last.end, end, path: UNKNOWN });
+      else if (last.end === undefined) this.debugLst.push({ start: this.pos, end, path: UNKNOWN });
+      // Force-printing a successful zero-byte decode still needs a row; table([]) is an error.
+      if (!this.debugLst.length) this.debugLst.push({ start: 0, end, path: UNKNOWN });
     }
   })();
 
-function toBytes(data: string | Bytes): Bytes {
-  if (utils.isBytes(data)) return data;
+function toBytes(data: TArg<string | Bytes>): TRet<Bytes> {
+  if (utils.isBytes(data)) return data as TRet<Bytes>;
   if (typeof data !== 'string') throw new Error('PD: data should be string or Uint8Array');
+  // Lowercase hex byte dumps such as "cafebabe" are also valid base64, so give them precedence.
+  if (!(data.length % 2) && /^[0-9a-f]+$/.test(data)) return hex.decode(data) as TRet<Bytes>;
   try {
-    return base64.decode(data);
-  } catch (e) {}
-  try {
-    return hex.decode(data);
+    return base64.decode(data) as TRet<Bytes>;
   } catch (e) {}
   throw new Error(`PD: data has unknown string format: ${data}`);
 }
 
-type DebugData = { path: string; data: Bytes; value?: any };
-function mapData(lst: DebugPath[], data: Bytes): DebugData[] {
+type DebugData = { path: string; data: TRet<Bytes>; value?: any };
+function mapData(lst: DebugPath[], data: TArg<Bytes>): TRet<DebugData[]> {
+  // DebugReader should emit a contiguous ordered partition of the input.
   let end = 0;
   const res: DebugData[] = [];
   for (const elm of lst) {
     if (elm.start !== end) throw new Error(`PD: elm start=${elm.start} after prev elm end=${end}`);
     if (elm.end === undefined) throw new Error(`PD: elm.end is undefined=${elm}`);
-    res.push({ path: elm.path, data: data.slice(elm.start, elm.end), value: elm.value });
+    res.push({
+      path: elm.path,
+      data: Uint8Array.from(data.subarray(elm.start, elm.end)) as TRet<Bytes>,
+      value: elm.value,
+    });
     end = elm.end;
   }
   if (end !== data.length) throw new Error('PD: not all data mapped');
-  return res;
+  return res as TRet<DebugData[]>;
 }
 
-function chrWidth(s: string) {
+function chrWidth(s: string): number {
   /*
   It is almost impossible to find out real characters width in terminal since it depends on terminal itself, current unicode version and moon's phase.
   So, we just stripping ANSI, tabs and unicode supplimental characters. Emoji support requires big tables (and have no guarantee to work), so we ignore it for now.
   Also, no support for full width unicode characters for now.
+  Normalize every tab; replacing only the first one undercounts table padding.
   */
   return s
     .replace(
       /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))/g,
       ''
     )
-    .replace('\t', '  ')
+    .replace(/\t/g, '  ')
     .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ' ').length;
 }
 
 function wrap(s: string, padding: number = 0) {
   // @ts-ignore
-  const limit = process.stdout.columns - 3 - padding;
+  const columns = process.stdout.columns;
+  // Non-TTY stdout has no width; tiny widths also cannot fit a useful ellipsis.
+  if (typeof columns !== 'number') return s;
+  const limit = columns - 3 - padding;
+  if (limit <= 0) return s;
   if (chrWidth(s) <= limit) return s;
   while (chrWidth(s) > limit) s = s.slice(0, -1);
   return `${s}${reset}...`;
@@ -185,10 +204,10 @@ export function table(data: any[]): void {
   console.log(res.join(nl));
 }
 
-function fmtData(data: Bytes, perLine = 8) {
+function fmtData(data: TArg<Bytes>, perLine = 8) {
   const res = [];
   for (let i = 0; i < data.length; i += perLine) {
-    res.push(hex.encode(data.slice(i, i + perLine)));
+    res.push(hex.encode(data.subarray(i, i + perLine)));
   }
   return res.map((i) => `${bold}${i}${reset}`).join(nl);
 }
@@ -219,7 +238,7 @@ function fmtValue(value: any) {
  */
 export function decode(
   coder: CoderType<any>,
-  data: string | Bytes,
+  data: TArg<string | Bytes>,
   forcePrint = false
 ): ReturnType<(typeof coder)['decode']> {
   data = toBytes(data);
@@ -250,7 +269,7 @@ export function decode(
   return res;
 }
 
-function getMap(coder: CoderType<any>, data: string | Bytes) {
+function getMap(coder: CoderType<any>, data: TArg<string | Bytes>) {
   data = toBytes(data);
   const r = new DebugReader(data);
   coder.decodeStream(r);
@@ -259,7 +278,7 @@ function getMap(coder: CoderType<any>, data: string | Bytes) {
   return mapData(r.debugLst, data);
 }
 
-function diffData(a: Bytes, e: Bytes) {
+function diffData(a: TArg<Bytes>, e: TArg<Bytes>) {
   const len = Math.max(a.length, e.length);
   let outA = '',
     outE = '';
@@ -280,7 +299,7 @@ function diffPath(a: string, e: string) {
   if (a === e) return a;
   return `A: ${red}${a}${reset}${nl}E: ${green}${e}${reset}`;
 }
-function diffLength(a: Bytes, e: Bytes) {
+function diffLength(a: TArg<Bytes>, e: TArg<Bytes>) {
   const [aLen, eLen] = [a.length, e.length];
   if (aLen === eLen) return aLen;
   return `A: ${red}${aLen}${reset}${nl}E: ${green}${eLen}${reset}`;
@@ -310,8 +329,8 @@ function diffValue(a: any, e: any) {
  */
 export function diff(
   coder: CoderType<any>,
-  actual: string | Bytes,
-  expected: string | Bytes,
+  actual: TArg<string | Bytes>,
+  expected: TArg<string | Bytes>,
   skipSame = true
 ): void {
   // @ts-ignore
@@ -335,7 +354,8 @@ export function diff(
       Value: diffValue(a.value, e.value),
     });
   }
-  table(data);
+  // Identical payloads with skipSame=true leave no rows; an empty diff is still successful.
+  if (data.length > 0) table(data);
   // @ts-ignore
   console.log('==== /DIFF ====');
 }
@@ -355,14 +375,19 @@ export function diff(
  */
 export function debug<T>(inner: CoderType<T>): CoderType<T> {
   if (!utils.isCoder(inner)) throw new Error(`debug: invalid inner value ${inner}`);
-  const log = (name: string, rw: Reader | Writer, value: any) => {
+  const log = (name: string, rw: TArg<Reader | Writer>, value: any) => {
     // @ts-ignore
     console.log(`DEBUG/${name}(${_TEST.Path.path(rw.stack)}):`, { type: typeof value, value });
     return value;
   };
   return coderWrap({
     size: inner.size,
-    encodeStream: (w: Writer, value: T) => inner.encodeStream(w, log('encode', w, value)),
-    decodeStream: (r: Reader): T => log('decode', r, inner.decodeStream(r)),
+    encodeStream: (w: TArg<Writer>, value: T) => inner.encodeStream(w, log('encode', w, value)),
+    decodeStream: (r: TArg<Reader>): T => log('decode', r, inner.decodeStream(r)),
   });
 }
+
+// Test-only export needs explicit members for isolated declaration emit.
+export const _TESTS: { chrWidth: (s: string) => number } = /* @__PURE__ */ Object.freeze({
+  chrWidth: chrWidth,
+});

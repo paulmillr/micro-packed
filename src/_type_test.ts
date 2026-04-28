@@ -37,6 +37,9 @@ assertType<P.CoderType<string>>(P.string(null));
 assertType<P.CoderType<string>>(P.cstring);
 assertType<P.CoderType<P.Bytes>>(P.bytes(null));
 assertType<P.CoderType<string>>(P.hex(null));
+let emptyBytes = P.EMPTY;
+emptyBytes = 1 as any as P.Bytes;
+assertType<P.Bytes>(emptyBytes);
 
 // Complex types
 
@@ -59,7 +62,7 @@ assertType<P.CoderType<(number | string)[]>>(P.tuple([P.U8, P.cstring]));
 assertType<P.CoderType<(string | number | boolean)[]>>(P.tuple([P.U8, P.cstring, P.bool]));
 // Map
 assertType<P.CoderType<string>>(P.map(P.U8, { l: 0x00 }));
-assertType<P.CoderType<string>>(P.map(P.U64BE, { l: 0x00n }));
+assertType<P.CoderType<string>>(P.map(P.U64BE, { l: BigInt(0x00) }));
 assertType<P.CoderType<string>>(P.map(P.cstring, { l: 'test' }));
 // Tag
 assertType<P.CoderType<{ TAG: 1; data: string } | { TAG: 2; data: boolean }>>(
@@ -83,6 +86,13 @@ assertType<
 assertType<P.CoderType<string>>(P.apply(P.bytes(null), base.base16));
 // Validate
 assertType<P.CoderType<string>>(P.validate(P.cstring, (a) => a));
+// Wrap
+assertType<P.CoderType<number>>(
+  P.wrap({
+    encodeStream: (w, value) => w.byte(value),
+    decodeStream: (r) => r.byte(),
+  })
+);
 // Dict
 const d1 = P.array(P.U16BE, P.tuple([P.cstring, P.U32LE] as const));
 assertType<P.CoderType<[string, number][]>>(d1);
