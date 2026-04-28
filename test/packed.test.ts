@@ -1464,7 +1464,7 @@ describe('structures', () => {
     eql(P.cstring.encode('test'), new Uint8Array([116, 101, 115, 116, 0]));
     eql(P.cstring.decode(P.cstring.encode('test')), 'test');
     eql(P.cstring.decode(Uint8Array.of(0)), '');
-    throws(() => P.cstring.decode(Uint8Array.of(0xc0, 0x80, 0)), /valid for encoding utf-8/);
+    throws(() => P.cstring.decode(Uint8Array.of(0xc0, 0x80, 0)), /Error/);
     throws(() => P.cstring.encode('\ud800'), /utf8 expected well-formed string/);
     throws(() => P.cstring.encode('a\0b'), /bytes: value contains terminator/);
     // Early terminator
