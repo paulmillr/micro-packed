@@ -169,6 +169,32 @@ describe('primitives', () => {
     ],
     errValues: [16777216 + 1, 2 ** 128],
   });
+  should('float NaN encodings are canonical', () => {
+    const nan32 = new DataView(Uint8Array.of(0x7f, 0xc0, 0x00, 0x01).buffer).getFloat32(0, false);
+    const nan64 = new DataView(
+      Uint8Array.of(0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01).buffer
+    ).getFloat64(0, false);
+    eql(P.F32BE.encode(nan32), Uint8Array.of(0x7f, 0xc0, 0x00, 0x00));
+    eql(P.F32LE.encode(nan32), Uint8Array.of(0x00, 0x00, 0xc0, 0x7f));
+    eql(P.F64BE.encode(nan64), Uint8Array.of(0x7f, 0xf8, 0, 0, 0, 0, 0, 0));
+    eql(P.F64LE.encode(nan64), Uint8Array.of(0, 0, 0, 0, 0, 0, 0xf8, 0x7f));
+    throws(() => P.F32BE.decode(Uint8Array.of(0x7f, 0xc0, 0x00, 0x01)), {
+      name: 'Error',
+      message: 'Reader(): f32: non-canonical NaN',
+    });
+    throws(() => P.F32LE.decode(Uint8Array.of(0x01, 0x00, 0xc0, 0x7f)), {
+      name: 'Error',
+      message: 'Reader(): f32: non-canonical NaN',
+    });
+    throws(() => P.F64BE.decode(Uint8Array.of(0x7f, 0xf8, 0, 0, 0, 0, 0, 1)), {
+      name: 'Error',
+      message: 'Reader(): f64: non-canonical NaN',
+    });
+    throws(() => P.F64LE.decode(Uint8Array.of(1, 0, 0, 0, 0, 0, 0xf8, 0x7f)), {
+      name: 'Error',
+      message: 'Reader(): f64: non-canonical NaN',
+    });
+  });
 
   should('bigint size', () => {
     throws(() => P.bigint(0, false, false, true), {
@@ -188,10 +214,21 @@ describe('primitives', () => {
     P.U64BE.decode(new Uint8Array(8));
     throws(() => P.U64BE.decode(new Uint8Array(9)));
 
-    const VarU64 = P.bigint(8, false, false, false);
-    VarU64.decode(new Uint8Array(7));
-    VarU64.decode(new Uint8Array(8));
-    throws(() => VarU64.decode(new Uint8Array(9))); // left more than needed
+    const VarU64 = P.bigint(8, false, false, false, true);
+    const CompatU64 = P.bigint(8, false, false, false);
+    eql(VarU64.decode(Uint8Array.of()), 0n);
+    eql(CompatU64.decode(Uint8Array.of(0, 10)), 10n);
+    eql(CompatU64.decode(new Uint8Array(7)), 0n);
+    eql(CompatU64.decode(new Uint8Array(8)), 0n);
+    throws(() => VarU64.decode(new Uint8Array(7)), {
+      name: 'Error',
+      message: 'Reader(): bigint: non-minimal encoding',
+    });
+    throws(() => VarU64.decode(Uint8Array.of(0, 10)), {
+      name: 'Error',
+      message: 'Reader(): bigint: non-minimal encoding',
+    });
+    throws(() => VarU64.decode(Uint8Array.of(1, 0, 0, 0, 0, 0, 0, 0, 0))); // left more than needed
     // encode
     eql(VarU64.encode(0n), Uint8Array.of());
     eql(VarU64.encode(10n), new Uint8Array([10]));
@@ -690,7 +727,7 @@ describe('primitives', () => {
   });
   should('signed unsized bigint', () => {
     const run = (le: boolean) => {
-      const coder = P.bigint(8, le, true, false);
+      const coder = P.bigint(8, le, true, false, true);
       const values = [
         -(2n ** 63n),
         -32769n,
@@ -795,10 +832,21 @@ describe('primitives', () => {
         shortLE: ['-128', '-1', '-1'],
       }
     );
+    for (const le of [false, true]) {
+      const coder = P.bigint(8, le, true, false, true);
+      throws(() => coder.decode(Uint8Array.of(0x00)), {
+        name: 'Error',
+        message: 'Reader(): bigint: non-minimal encoding',
+      });
+      throws(() => coder.decode(Uint8Array.of(0xff, 0xff)), {
+        name: 'Error',
+        message: 'Reader(): bigint: non-minimal encoding',
+      });
+    }
   });
   should('signed unsized int', () => {
     const run = (le: boolean) => {
-      const coder = P.int(6, le, true, false);
+      const coder = P.int(6, le, true, false, true);
       const values = [-(2 ** 47), -32768, -128, -1, 0, 127, 128, 255, 32767, 32768, 2 ** 47 - 1];
       return values.map((value) => {
         const encoded = coder.encode(value);
@@ -852,6 +900,17 @@ describe('primitives', () => {
         shortLE: [-128, -1, -1],
       }
     );
+    for (const le of [false, true]) {
+      const coder = P.int(6, le, true, false, true);
+      throws(() => coder.decode(Uint8Array.of(0x00)), {
+        name: 'Error',
+        message: 'Reader(): bigint: non-minimal encoding',
+      });
+      throws(() => coder.decode(Uint8Array.of(0xff, 0xff)), {
+        name: 'Error',
+        message: 'Reader(): bigint: non-minimal encoding',
+      });
+    }
   });
   should('number typecheck', () => {
     throws(() => P.U64BE.encode(1.01));
@@ -914,6 +973,23 @@ describe('structures', () => {
       p: P.padLeft(3, P.U8),
       correct: [[97, '000061']],
     });
+    should('left validates padding bytes', () => {
+      const zero = P.padLeft(3, P.U8);
+      const custom = P.padLeft(4, P.U8, (i) => i + 1);
+      eql(custom.decode(Uint8Array.of(1, 2, 3, 9)), 9);
+      throws(() => zero.decode(Uint8Array.of(1, 0, 97)), {
+        name: 'Error',
+        message: 'Reader(): padLeft: invalid padding byte at 0: 1 !== 0',
+      });
+      throws(() => custom.decode(Uint8Array.of(1, 2, 4, 9)), {
+        name: 'Error',
+        message: 'Reader(): padLeft: invalid padding byte at 2: 4 !== 3',
+      });
+      throws(() => P.padLeft(2, P.U8, () => 256).decode(Uint8Array.of(0, 9)), {
+        name: 'Error',
+        message: 'Reader(): padLeft: wrong padding byte at 0: 256',
+      });
+    });
     should('left zero-size', () => {
       const constant = P.padLeft(4, P.constant(1));
       const bytes = P.padLeft(4, P.bytes(0));
@@ -948,6 +1024,24 @@ describe('structures', () => {
         ['aaaaa', '616161616100'],
         ['aaaaaa', '616161616161000000'],
       ],
+    });
+    should('right validates padding bytes', () => {
+      const zero = P.padRight(3, P.U8);
+      const custom = P.padRight(4, P.U8, (i) => i + 1);
+      eql(zero.decode(Uint8Array.of(97, 0, 0)), 97);
+      eql(custom.decode(Uint8Array.of(9, 1, 2, 3)), 9);
+      throws(() => zero.decode(Uint8Array.of(97, 0, 1)), {
+        name: 'Error',
+        message: 'Reader(): padRight: invalid padding byte at 1: 1 !== 0',
+      });
+      throws(() => custom.decode(Uint8Array.of(9, 1, 2, 4)), {
+        name: 'Error',
+        message: 'Reader(): padRight: invalid padding byte at 2: 4 !== 3',
+      });
+      throws(() => P.padRight(2, P.U8, () => 256).decode(Uint8Array.of(9, 0)), {
+        name: 'Error',
+        message: 'Reader(): padRight: wrong padding byte at 0: 256',
+      });
     });
     should('right zero-size', () => {
       const constant = P.padRight(4, P.constant(1));
@@ -1357,6 +1451,11 @@ describe('structures', () => {
 
       eql(a2.decode(a2.encode([0, 1, 2])), [0, 1, 2]);
       eql(a2.encode([0, 1, 2]), new Uint8Array([0, 0, 1, 0, 2, 0, 1, 2, 3]));
+      const terminator = Buffer.from([5, 6]);
+      const snap = P.array(terminator, P.U8);
+      terminator.fill(9);
+      eql(snap.encode([1]), Uint8Array.of(1, 5, 6));
+      eql(snap.decode(Uint8Array.of(1, 5, 6)), [1]);
       // corrupted terminator
       throws(() => a.decode(new Uint8Array([1, 0, 2, 0, 1, 2])));
     });
@@ -1967,6 +2066,12 @@ describe('structures', () => {
       throws(() => f2.decode(new Uint8Array([0x1, 0x2])));
       throws(() => f2.decode(new Uint8Array([0x1])));
       throws(() => f2.decode(new Uint8Array([0x1, 0x2, 0x4])));
+
+      const marker = Uint8Array.of(5, 6);
+      const snap = P.flag(marker);
+      marker.fill(9);
+      eql(snap.encode(true), Uint8Array.of(5, 6));
+      eql(snap.decode(Uint8Array.of(5, 6)), true);
     });
 
     should('flagged', () => {
@@ -2503,6 +2608,11 @@ describe('structures', () => {
         name: 'Error',
         message: 'Reader(): magic: invalid value: [object Object] !== 7',
       });
+      const marker = Uint8Array.of(1, 2);
+      const snap = P.magicBytes(marker);
+      marker.fill(9);
+      eql(snap.encode(undefined), Uint8Array.of(1, 2));
+      eql(snap.decode(Uint8Array.of(1, 2)), undefined);
     });
     should('constructor type errors', () => {
       const marker = Uint8Array.of(0, 1);
@@ -3167,6 +3277,28 @@ describe('utils', () => {
     });
     should('invalid lengths and offsets', () => {
       {
+        throws(() => new Reader([1] as any), {
+          name: 'TypeError',
+          message: 'Reader: expected Uint8Array, got object',
+        });
+        throws(() => P.U8.decode([1] as any), {
+          name: 'TypeError',
+          message: 'decode: expected Uint8Array, got object',
+        });
+        throws(() => P.U8.decode(Uint8Array.of(1), null as any), {
+          name: 'TypeError',
+          message: 'ReaderOpts: expected plain object, got null',
+        });
+        throws(() => P.U8.decode(Uint8Array.of(1), { allowUnreadBytes: 'yes' } as any), {
+          name: 'TypeError',
+          message: 'ReaderOpts.allowUnreadBytes: expected boolean, got string',
+        });
+        throws(() => P.U8.decode(Uint8Array.of(1), { allowMultipleReads: 1 } as any), {
+          name: 'TypeError',
+          message: 'ReaderOpts.allowMultipleReads: expected boolean, got number',
+        });
+      }
+      {
         const r = new Reader(Uint8Array.of(10, 11, 12));
         throws(() => r.absBytes(-1), {
           name: 'Error',
@@ -3209,6 +3341,22 @@ describe('utils', () => {
       throws(() => P.bytes(P.I8).decode(Uint8Array.of(0xff, 1, 2, 3), { allowUnreadBytes: true }), {
         name: 'Error',
         message: 'Reader(): Wrong length: -1',
+      });
+      const nullLen = P.wrap({
+        encodeStream: () => {},
+        decodeStream: () => null as any,
+      });
+      const boolLen = P.wrap({
+        encodeStream: () => {},
+        decodeStream: () => true as any,
+      });
+      throws(() => P.bytes(nullLen as any).decode(Uint8Array.of()), {
+        name: 'Error',
+        message: 'Reader(): Wrong length: null',
+      });
+      throws(() => P.bytes(boolLen as any).decode(Uint8Array.of()), {
+        name: 'Error',
+        message: 'Reader(): Wrong length: true',
       });
       throws(() => P.pointer(P.I8, P.U8).decode(Uint8Array.of(0xff, 7)), {
         name: 'Error',
@@ -3317,6 +3465,22 @@ describe('utils', () => {
         eql(w.pos, 0);
         throws(() => coder.encode(value));
       }
+    });
+    should('bytes: invalid input', () => {
+      const coder = P.wrap({
+        encodeStream: (w) => w.bytes([1] as any),
+        decodeStream: (r) => r.byte(),
+      });
+      const w = new Writer();
+      throws(() => w.bytes([1] as any), {
+        name: 'Error',
+        message: 'Writer(): writeBytes: expected Uint8Array, got object',
+      });
+      eql(w.pos, 0);
+      throws(() => coder.encode(0), {
+        name: 'Error',
+        message: 'Writer(): writeBytes: expected Uint8Array, got object',
+      });
     });
     should('error prefix and finished state', () => {
       const err = new Writer().err('boom');
