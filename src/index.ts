@@ -1,5 +1,5 @@
-import { hex as baseHex, utf8, type Coder as BaseCoder } from '@scure/base';
 import type { TArg, TRet } from '@scure/base';
+import { hex as baseHex, utf8, type Coder as BaseCoder } from '@scure/base';
 export type { TArg, TRet } from '@scure/base';
 
 /**
@@ -300,17 +300,16 @@ const lengthCoder = (len: Length) => {
       if (typeof len === 'number') byteLen = len;
       else if (typeof len === 'string') byteLen = Path.resolve((w as _Writer).stack, len);
       if (typeof byteLen === 'bigint') byteLen = Number(byteLen);
-      if (byteLen === undefined || byteLen !== value)
+      if (!isNum(byteLen) || byteLen < 0 || byteLen !== value)
         throw w.err(`Wrong length: ${byteLen} len=${len} exp=${value} (${typeof value})`);
     },
     decodeStream(r: TArg<Reader>) {
       let byteLen;
-      if (isCoder(len)) byteLen = Number(len.decodeStream(r));
+      if (isCoder(len)) byteLen = len.decodeStream(r);
       else if (typeof len === 'number') byteLen = len;
       else if (typeof len === 'string') byteLen = Path.resolve((r as _Reader).stack, len);
       if (typeof byteLen === 'bigint') byteLen = Number(byteLen);
-      // Dynamic signed or custom length coders can decode impossible lengths; reject before callers
-      // use the value as a loop bound or byte count.
+      else if (typeof byteLen !== 'number') throw r.err(`Wrong length: ${byteLen}`);
       if (!isNum(byteLen) || byteLen < 0) throw r.err(`Wrong length: ${byteLen}`);
       return byteLen;
     },
@@ -687,6 +686,17 @@ class _Reader implements Reader {
     parent: _Reader | undefined = undefined,
     parentOffset: number = 0
   ) {
+    if (!isBytes(data)) throw new TypeError(`Reader: expected Uint8Array, got ${typeof data}`);
+    if (!isPlainObject(opts)) throw new TypeError(`ReaderOpts: expected plain object, got ${opts}`);
+    if (opts.allowUnreadBytes !== undefined && typeof opts.allowUnreadBytes !== 'boolean')
+      throw new TypeError(
+        `ReaderOpts.allowUnreadBytes: expected boolean, got ${typeof opts.allowUnreadBytes}`
+      );
+    if (opts.allowMultipleReads !== undefined && typeof opts.allowMultipleReads !== 'boolean')
+      throw new TypeError(
+        `ReaderOpts.allowMultipleReads: expected boolean, got ${typeof opts.allowMultipleReads}`
+      );
+
     this.data = data;
     this.opts = opts;
     this.stack = stack;
@@ -875,6 +885,7 @@ class _Writer implements Writer {
   bytes(b: Bytes): void {
     if (this.finished) throw this.err('buffer: finished');
     if (this.bitPos) throw this.err('writeBytes: ends with non-empty bit buffer');
+    if (!isBytes(b)) throw this.err(`writeBytes: expected Uint8Array, got ${typeof b}`);
     // Keep caller-provided buffers by reference until finish(); mutating them afterwards changes
     // the encoded output.
     this.buffers.push(b);
@@ -945,6 +956,25 @@ class _Writer implements Writer {
 }
 // Immutable LE<->BE
 const swapEndianness = (b: TArg<Bytes>): TRet<Bytes> => Uint8Array.from(b).reverse();
+function checkMinimalBigintBytes(
+  value: TArg<Bytes>,
+  le: boolean,
+  signed: boolean,
+  err: (msg: string) => Error
+): void {
+  if (!value.length) return;
+  const b = le ? swapEndianness(value) : value;
+  const fail = () => {
+    throw err('bigint: non-minimal encoding');
+  };
+  if (!signed) {
+    if (b[0] === 0) fail();
+    return;
+  }
+  // Encoders emit the shortest signed two's-complement byte string that preserves the sign bit.
+  if (b[0] === 0 && (b.length === 1 || (b[1] & 128) === 0)) fail();
+  if (b.length > 1 && b[0] === 255 && (b[1] & 128) !== 0) fail();
+}
 /** Internal function for checking bit bounds of bigint in signed/unsinged form */
 function checkBounds(value: bigint, bits: bigint, signed: boolean): void {
   if (signed) {
@@ -975,6 +1005,7 @@ function _wrap<T>(inner: TArg<BytesCoderStream<T>>): CoderType<T> {
       return w.finish() as TRet<Bytes>;
     },
     decode: (data: TArg<Bytes>, opts: ReaderOpts = {}): T => {
+      if (!isBytes(data)) throw new TypeError(`decode: expected Uint8Array, got ${typeof data}`);
       const r = new _Reader(data, opts);
       const res = _inner.decodeStream(r);
       r.finish();
@@ -1385,6 +1416,7 @@ export const bits = (len: number): CoderType<number> => {
  * @param le - Whether to use little-endian byte order.
  * @param signed - Whether the bigint is signed.
  * @param sized - Whether the bigint should have a fixed size.
+ * @param minimal - Whether unsized decoding should reject redundant zero/sign-extension bytes.
  * @returns CoderType representing the bigint value.
  * @throws On invalid bigint coder configuration or out-of-bounds bigint values. {@link Error}
  * @throws On wrong builder argument or wrapped numeric value types. {@link TypeError}
@@ -1400,7 +1432,8 @@ export const bigint = (
   size: number,
   le = false,
   signed = false,
-  sized = true
+  sized = true,
+  minimal = false
 ): CoderType<bigint> => {
   // Size is used in exponent math below; reject non-positive widths before raw RangeErrors leak.
   if (!isNum(size) || size <= 0) throw new Error(`bigint/size: wrong value ${size}`);
@@ -1409,6 +1442,8 @@ export const bigint = (
     throw new Error(`bigint/signed: expected boolean, got ${typeof signed}`);
   if (typeof sized !== 'boolean')
     throw new Error(`bigint/sized: expected boolean, got ${typeof sized}`);
+  if (typeof minimal !== 'boolean')
+    throw new Error(`bigint/minimal: expected boolean, got ${typeof minimal}`);
   const bLen = BigInt(size);
   const signBit = _2n ** (_8n * bLen - _1n);
   return wrap({
@@ -1443,6 +1478,7 @@ export const bigint = (
     decodeStream: (r: TArg<Reader>): bigint => {
       // TODO: for le we can read until first zero?
       const value = r.bytes(sized ? size : Math.min(size, r.leftBytes));
+      if (!sized && minimal) checkMinimalBigintBytes(value, le, signed, (msg) => r.err(msg));
       const b = le ? value : swapEndianness(value);
       let res = _0n;
       for (let i = 0; i < b.length; i++) res |= BigInt(b[i]) << (_8n * BigInt(i));
@@ -1520,6 +1556,7 @@ export const I64BE: CoderType<bigint> = /* @__PURE__ */ Object.freeze(
  * @param le - Whether to use little-endian byte order.
  * @param signed - Whether the number is signed.
  * @param sized - Whether the number should have a fixed size.
+ * @param minimal - Whether unsized decoding should reject redundant zero/sign-extension bytes.
  * @returns CoderType representing the number value.
  * @throws On invalid number-coder configuration or out-of-bounds values. {@link Error}
  * @throws On wrong builder argument or wrapped numeric value types. {@link TypeError}
@@ -1530,15 +1567,23 @@ export const I64BE: CoderType<bigint> = /* @__PURE__ */ Object.freeze(
  * const int24 = P.int(3, false); // Define a coder for a 24-bit unsigned big-endian integer
  * ```
  */
-export const int = (size: number, le = false, signed = false, sized = true): CoderType<number> => {
+export const int = (
+  size: number,
+  le = false,
+  signed = false,
+  sized = true,
+  minimal = false
+): CoderType<number> => {
   if (!isNum(size) || size <= 0) throw new Error(`int/size: wrong value ${size}`);
   if (typeof le !== 'boolean') throw new Error(`int/le: expected boolean, got ${typeof le}`);
   if (typeof signed !== 'boolean')
     throw new Error(`int/signed: expected boolean, got ${typeof signed}`);
   if (typeof sized !== 'boolean')
     throw new Error(`int/sized: expected boolean, got ${typeof sized}`);
+  if (typeof minimal !== 'boolean')
+    throw new Error(`int/minimal: expected boolean, got ${typeof minimal}`);
   if (size > 6) throw new Error('int supports size up to 6 bytes (48 bits): use bigints instead');
-  return apply(bigint(size, le, signed, sized), coders.numberBigint);
+  return apply(bigint(size, le, signed, sized, minimal), coders.numberBigint);
 };
 
 type ViewCoder = {
@@ -1659,20 +1704,69 @@ export const I8: CoderType<number> = /* @__PURE__ */ Object.freeze(
 );
 
 // Floats
-const f32 = (le?: boolean) =>
-  view(4, {
-    read: (view, pos) => view.getFloat32(pos, le),
-    write: (view, value) => view.setFloat32(0, value, le),
+const canonicalNaN = (len: 4 | 8, le: boolean): TRet<Bytes> => {
+  const buf = new Uint8Array(len);
+  const v = createView(buf);
+  if (len === 4) v.setFloat32(0, NaN, le);
+  else v.setFloat64(0, NaN, le);
+  return buf;
+};
+const f32 = (le = false) => {
+  const nan = canonicalNaN(4, le);
+  const nanBits = createView(nan).getUint32(0, le);
+  return wrap({
+    size: 4,
+    encodeStream: (w: TArg<Writer>, value: number) => {
+      if (Number.isNaN(value)) return w.bytes(nan as TRet<Bytes>);
+      return (w as _Writer).writeView(4, (view) => view.setFloat32(0, value, le));
+    },
+    decodeStream: (r: TArg<Reader>): number => {
+      const _r = r as _Reader;
+      return _r.readView(4, (view, pos) => {
+        const value = view.getFloat32(pos, le);
+        if (Number.isNaN(value) && view.getUint32(pos, le) !== nanBits)
+          throw _r.err('f32: non-canonical NaN');
+        return value;
+      });
+    },
     validate: (value: number) => {
+      if (typeof value !== 'number')
+        throw new TypeError(`viewCoder: expected number, got ${typeof value}`);
       if (Math.fround(value) !== value && !Number.isNaN(value))
         throw new Error(`f32: wrong value=${value}`);
+      return value;
     },
   });
-const f64 = (le?: boolean) =>
-  view(8, {
-    read: (view, pos) => view.getFloat64(pos, le),
-    write: (view, value) => view.setFloat64(0, value, le),
+};
+const f64 = (le = false) => {
+  const nan = canonicalNaN(8, le);
+  const nanLeft = createView(nan).getUint32(0, le);
+  const nanRight = createView(nan).getUint32(4, le);
+  return wrap({
+    size: 8,
+    encodeStream: (w: TArg<Writer>, value: number) => {
+      if (Number.isNaN(value)) return w.bytes(nan as TRet<Bytes>);
+      return (w as _Writer).writeView(8, (view) => view.setFloat64(0, value, le));
+    },
+    decodeStream: (r: TArg<Reader>): number => {
+      const _r = r as _Reader;
+      return _r.readView(8, (view, pos) => {
+        const value = view.getFloat64(pos, le);
+        if (
+          Number.isNaN(value) &&
+          (view.getUint32(pos, le) !== nanLeft || view.getUint32(pos + 4, le) !== nanRight)
+        )
+          throw _r.err('f64: non-canonical NaN');
+        return value;
+      });
+    },
+    validate: (value: number) => {
+      if (typeof value !== 'number')
+        throw new TypeError(`viewCoder: expected number, got ${typeof value}`);
+      return value;
+    },
   });
+};
 
 /** 32-bit big-endian floating point CoderType ("binary32", IEEE 754-2008). */
 export const F32BE: CoderType<number> = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ f32(false));
@@ -1968,18 +2062,19 @@ export const flag = (flagValue: TArg<Bytes>, xor = false): CoderType<boolean | u
   if (flagValue.length === 0) throw new Error('flag/flagValue: empty marker');
   if (typeof xor !== 'boolean')
     throw new TypeError(`flag/xor: expected boolean, got ${typeof xor}`);
+  const marker = Uint8Array.from(flagValue) as TRet<Bytes>;
   return wrap({
     // Marker flags encode one state as empty, so encoded length depends on the boolean value.
     size: undefined,
     encodeStream: (w: TArg<Writer>, value: boolean | undefined) => {
-      if (!!value !== xor) w.bytes(flagValue as TRet<Bytes>);
+      if (!!value !== xor) w.bytes(marker);
     },
     decodeStream: (r: TArg<Reader>): boolean | undefined => {
-      let hasFlag = r.leftBytes >= flagValue.length;
+      let hasFlag = r.leftBytes >= marker.length;
       if (hasFlag) {
-        hasFlag = equalBytes(r.bytes(flagValue.length, true), flagValue);
+        hasFlag = equalBytes(r.bytes(marker.length, true), marker);
         // Found flag, advance cursor position
-        if (hasFlag) r.bytes(flagValue.length);
+        if (hasFlag) r.bytes(marker.length);
       }
       return hasFlag !== xor; // hasFlag ^ xor
     },
@@ -2148,8 +2243,7 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
  * @returns CoderType representing the magic bytes.
  * @throws If the constant check fails or the wrapped coder rejects the bytes. {@link Error}
  * @throws On wrong magic-bytes argument types. {@link TypeError}
- * Note: Uint8Array constants are retained by reference; do not mutate them
- * after constructing the coder.
+ * Note: Uint8Array constants are copied during construction.
  * @example
  * Match a fixed byte or string marker without producing a value.
  * ```ts
@@ -2160,7 +2254,7 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
 export const magicBytes = (constant: TArg<Bytes | string>): CoderType<undefined> => {
   if (typeof constant !== 'string' && !isBytes(constant))
     throw new TypeError(`magicBytes: expected Uint8Array or string, got ${typeof constant}`);
-  const c = typeof constant === 'string' ? utf8.decode(constant) : constant;
+  const c = typeof constant === 'string' ? utf8.decode(constant) : Uint8Array.from(constant);
   return magic(createBytes(c.length), c);
 };
 
@@ -2320,8 +2414,7 @@ export function tuple<
  * @returns CoderType representing the array.
  * @throws If the array definition or encoded array elements are invalid. {@link Error}
  * @throws On wrong array-coder argument types. {@link TypeError}
- * Note: Uint8Array terminators are retained by reference; do not mutate them
- * after constructing the coder.
+ * Note: Uint8Array terminators are copied during construction.
  * @example
  * Build dynamic, fixed-size, and trailing arrays from one item coder.
  * ```ts
@@ -2340,9 +2433,10 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
   // Constructor argument validation uses TypeError.
   // Array data failures still come from reader/writer errors.
   if (!isCoder(inner)) throw new TypeError(`array: invalid inner value ${inner}`);
+  const terminator = isBytes(len) ? (Uint8Array.from(len) as TRet<Bytes>) : undefined;
   // By construction length is inside array (otherwise there will be various incorrect stack states)
   // But forcing users always write '..' seems like bad idea. Also, breaking change.
-  const _length = lengthCoder(typeof len === 'string' ? `../${len}` : len);
+  const _length = lengthCoder(typeof len === 'string' ? `../${len}` : terminator || len);
   // Unbounded arrays must make cursor progress; zero-size children would loop forever.
   if (len === null && inner.size === 0)
     throw new Error('array: null length cannot use zero-size inner');
@@ -2352,19 +2446,19 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
     encodeStream: (w: TArg<Writer>, value: T[]) => {
       const _w = w as _Writer;
       _w.pushObj(value, (fieldFn) => {
-        if (!isBytes(len)) _length.encodeStream(w, value.length);
+        if (!terminator) _length.encodeStream(w, value.length);
         for (let i = 0; i < value.length; i++) {
           fieldFn(`${i}`, () => {
             const elm = value[i];
             const startPos = (w as _Writer).pos;
             inner.encodeStream(w, elm);
-            if (isBytes(len)) {
+            if (terminator) {
               // Terminator is bigger than elm size, so skip
-              if (len.length > _w.pos - startPos) return;
+              if (terminator.length > _w.pos - startPos) return;
               const data = _w.finish(false).subarray(startPos, _w.pos);
               // There is still possible case when multiple elements create terminator,
               // but it is hard to catch here, will be very slow
-              if (equalBytes(data.subarray(0, len.length), len))
+              if (equalBytes(data.subarray(0, terminator.length), terminator))
                 throw _w.err(
                   `array: inner element encoding same as separator. elm=${elm} data=${data}`
                 );
@@ -2372,7 +2466,7 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
           });
         }
       });
-      if (isBytes(len)) w.bytes(len as TRet<Bytes>);
+      if (terminator) w.bytes(terminator);
     },
     decodeStream: (r: TArg<Reader>): T[] => {
       const res: T[] = [];
@@ -2390,11 +2484,11 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
             });
             if (inner.size && r.leftBytes < inner.size) break;
           }
-        } else if (isBytes(len)) {
+        } else if (terminator) {
           for (let i = 0; ; i++) {
-            if (equalBytes(r.bytes(len.length, true), len)) {
+            if (equalBytes(r.bytes(terminator.length, true), terminator)) {
               // Advance cursor position if terminator found
-              r.bytes(len.length);
+              r.bytes(terminator.length);
               break;
             }
             fieldFn(`${i}`, () => {
@@ -2701,14 +2795,31 @@ function padLength(blockSize: number, len: number): number {
   if (len % blockSize === 0) return 0;
   return blockSize - (len % blockSize);
 }
+function padByte(label: string, padFn: PadFn, i: number, err: (msg: string) => Error): number {
+  const value = padFn(i);
+  if (!isNum(value) || value < 0 || value > 255)
+    throw err(`${label}: wrong padding byte at ${i}: ${value}`);
+  return value;
+}
+function writePadding(label: string, w: TArg<Writer>, padFn: PadFn, len: number): void {
+  for (let i = 0; i < len; i++) w.byte(padByte(label, padFn, i, (msg) => w.err(msg)));
+}
+function checkPadding(label: string, r: TArg<Reader>, padFn: PadFn, len: number): void {
+  const padding = r.bytes(len);
+  for (let i = 0; i < padding.length; i++) {
+    const expected = padByte(label, padFn, i, (msg) => r.err(msg));
+    if (padding[i] !== expected)
+      throw r.err(`${label}: invalid padding byte at ${i}: ${padding[i]} !== ${expected}`);
+  }
+}
 /**
  * Pads a CoderType with a specified block size and padding function on the left side.
  * @param blockSize - Block size for padding (positive safe integer).
  * @param inner - Inner CoderType to pad.
  * @param padFn - Padding function to use. If not provided, zero padding is used.
  * @returns CoderType representing the padded value.
- * Note: decode skips the computed left-padding bytes without validating values;
- * `padFn` affects encoding only.
+ * Decode validates that padding bytes match `padFn`, preventing alternate encodings with hidden
+ * padding data.
  * @throws If the padding configuration or wrapped coder is invalid. {@link Error}
  * @throws On wrong padding argument types. {@link TypeError}
  * @example
@@ -2738,11 +2849,11 @@ export function padLeft<T>(
     size: size + padLength(blockSize, size),
     encodeStream: (w: TArg<Writer>, value: T) => {
       const padBytes = padLength(blockSize, size);
-      for (let i = 0; i < padBytes; i++) w.byte(_padFn(i));
+      writePadding('padLeft', w, _padFn, padBytes);
       inner.encodeStream(w, value);
     },
     decodeStream: (r: TArg<Reader>): T => {
-      r.bytes(padLength(blockSize, size));
+      checkPadding('padLeft', r, _padFn, padLength(blockSize, size));
       return inner.decodeStream(r);
     },
   });
@@ -2753,8 +2864,8 @@ export function padLeft<T>(
  * @param inner - Inner CoderType to pad.
  * @param padFn - Padding function to use. If not provided, zero padding is used.
  * @returns CoderType representing the padded value.
- * Note: decode skips the computed right-padding bytes without validating values;
- * `padFn` affects encoding only.
+ * Decode validates that padding bytes match `padFn`, preventing alternate encodings with hidden
+ * padding data.
  * @throws If the padding configuration or wrapped coder is invalid. {@link Error}
  * @throws On wrong padding argument types. {@link TypeError}
  * @example
@@ -2786,12 +2897,12 @@ export function padRight<T>(
       const pos = _w.pos;
       inner.encodeStream(w, value);
       const padBytes = padLength(blockSize, _w.pos - pos);
-      for (let i = 0; i < padBytes; i++) w.byte(_padFn(i));
+      writePadding('padRight', w, _padFn, padBytes);
     },
     decodeStream: (r: TArg<Reader>): T => {
       const start = r.pos;
       const res = inner.decodeStream(r);
-      r.bytes(padLength(blockSize, r.pos - start));
+      checkPadding('padRight', r, _padFn, padLength(blockSize, r.pos - start));
       return res;
     },
   });
