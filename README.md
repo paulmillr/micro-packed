@@ -390,6 +390,8 @@ This can be used to check for a specific magic value or sequence of bytes at the
 | constant | Constant value.                                          |
 | check    | Whether to check the decoded value against the constant. |
 
+Set `check` to `false` only for formats that intentionally accept any encoded value in this field.
+
 ```ts
 import * as P from 'micro-packed';
 
@@ -591,10 +593,11 @@ Bitset of boolean values with optional padding.
 
 **Returns**: CoderType representing the bitset.
 
-| Param | Description                                        |
-| ----- | -------------------------------------------------- |
-| names | An array of string names for the bitset values.    |
-| pad   | Whether to pad the bitset to a multiple of 8 bits. |
+| Param  | Description                                                                                                       |
+| ------ | ----------------------------------------------------------------------------------------------------------------- |
+| names  | An array of string names for the bitset values.                                                                   |
+| pad    | Whether to pad the bitset to a multiple of 8 bits.                                                                |
+| strict | Whether to reject duplicate names and non-zero padding bits. Enabled by default; pass `false` for legacy formats. |
 
 ```js
 import * as P from 'micro-packed';

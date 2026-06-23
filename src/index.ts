@@ -95,11 +95,36 @@ function createFindBytes(needle: TArg<Uint8Array>): TRet<BytesFinder> {
 const findBytes = (needle: TArg<Uint8Array>, data: TArg<Uint8Array>, pos = 0): number | undefined =>
   createFindBytes(needle)(data, pos);
 /** Compares values used as encoded-domain constants; byte arrays compare by contents. */
-function equal(a: unknown, b: unknown): boolean {
+function equal(a: unknown, b: unknown, seen = new WeakMap<object, WeakSet<object>>()): boolean {
   const aBytes = isBytes(a);
   const bBytes = isBytes(b);
   if (aBytes || bBytes) return aBytes && bBytes && equalBytes(a, b);
-  return a === b;
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  const aObj = a as object;
+  const bObj = b as object;
+  let seenB = seen.get(aObj);
+  if (seenB?.has(bObj)) return true;
+  if (!seenB) {
+    seenB = new WeakSet<object>();
+    seen.set(aObj, seenB);
+  }
+  seenB.add(bObj);
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!equal(a[i], b[i], seen)) return false;
+    return true;
+  }
+  if (!isPlainObject(a) || !isPlainObject(b)) return false;
+  const aRec = a as Record<string, unknown>;
+  const bRec = b as Record<string, unknown>;
+  const aKeys = Object.keys(aRec);
+  const bKeys = Object.keys(bRec);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (!hasOwn(bRec, key) || !equal(aRec[key], bRec[key], seen)) return false;
+  }
+  return true;
 }
 /** Checks if the given value is a Uint8Array. */
 function isBytes(a: unknown): a is Bytes {
@@ -1417,6 +1442,7 @@ export const bits = (len: number): CoderType<number> => {
  * @param signed - Whether the bigint is signed.
  * @param sized - Whether the bigint should have a fixed size.
  * @param minimal - Whether unsized decoding should reject redundant zero/sign-extension bytes.
+ * Enabled by default; pass `false` only for legacy formats that intentionally accept non-minimal integer encodings.
  * @returns CoderType representing the bigint value.
  * @throws On invalid bigint coder configuration or out-of-bounds bigint values. {@link Error}
  * @throws On wrong builder argument or wrapped numeric value types. {@link TypeError}
@@ -1433,7 +1459,7 @@ export const bigint = (
   le = false,
   signed = false,
   sized = true,
-  minimal = false
+  minimal = true
 ): CoderType<bigint> => {
   // Size is used in exponent math below; reject non-positive widths before raw RangeErrors leak.
   if (!isNum(size) || size <= 0) throw new Error(`bigint/size: wrong value ${size}`);
@@ -1557,6 +1583,7 @@ export const I64BE: CoderType<bigint> = /* @__PURE__ */ Object.freeze(
  * @param signed - Whether the number is signed.
  * @param sized - Whether the number should have a fixed size.
  * @param minimal - Whether unsized decoding should reject redundant zero/sign-extension bytes.
+ * Enabled by default; pass `false` only for legacy formats that intentionally accept non-minimal integer encodings.
  * @returns CoderType representing the number value.
  * @throws On invalid number-coder configuration or out-of-bounds values. {@link Error}
  * @throws On wrong builder argument or wrapped numeric value types. {@link TypeError}
@@ -1572,7 +1599,7 @@ export const int = (
   le = false,
   signed = false,
   sized = true,
-  minimal = false
+  minimal = true
 ): CoderType<number> => {
   if (!isNum(size) || size <= 0) throw new Error(`int/size: wrong value ${size}`);
   if (typeof le !== 'boolean') throw new Error(`int/le: expected boolean, got ${typeof le}`);
@@ -2220,13 +2247,7 @@ export function magic<T>(inner: CoderType<T>, constant: T, check = true): CoderT
     decodeStream: (r: TArg<Reader>): undefined => {
       const value = inner.decodeStream(r);
       // check=false still consumes the encoded field but intentionally skips constant comparison.
-      // Generic object equality would need deep-equal semantics, and decoded structs are fresh
-      // objects. Skip only when both sides are non-byte objects; mismatched primitive/object or
-      // byte/object pairs are still comparable and should reject.
-      const valueObj = value !== null && typeof value === 'object' && !isBytes(value);
-      const constantObj = constant !== null && typeof constant === 'object' && !isBytes(constant);
-      const canCompare = !valueObj || !constantObj;
-      if (check && canCompare && !equal(value, constant)) {
+      if (check && !equal(value, constant)) {
         throw r.err(`magic: invalid value: ${value} !== ${constant}`);
       }
       return;
@@ -2710,6 +2731,7 @@ export function mappedTag<
  * @param names - An array of string names for the bitset values.
  * @param pad - Whether to pad the bitset to a multiple of 8 bits.
  * @param strict - Whether to reject duplicate names and non-zero padding bits.
+ * Pass `false` only for legacy formats that intentionally accept alternate bitset encodings.
  * @returns CoderType representing the bitset.
  * @typeParam Names - Bit names preserved in the returned record.
  * @throws If the bitset definition or encoded bitset values are invalid. {@link Error}
@@ -2717,8 +2739,9 @@ export function mappedTag<
  * Note: bits follow `names` order and are written most-significant-bit first
  * within each byte; non-byte-aligned `pad=false` bitsets must be composed with
  * more bit-level coders.
- * Note: strict mode is opt-in for legacy compatibility with callers that used
- * repeated reserved names or accept non-zero padding bits.
+ * Note: strict mode is enabled by default. Disable it only for legacy
+ * compatibility with callers that used repeated reserved names or accept
+ * non-zero padding bits.
  * Note: the names array is retained by reference; mutating it after construction
  * changes encoding and decoding.
  * @example
@@ -2731,7 +2754,7 @@ export function mappedTag<
 export function bitset<Names extends readonly string[]>(
   names: Names,
   pad = false,
-  strict = false
+  strict = true
 ): CoderType<Record<Names[number], boolean>> {
   if (typeof pad !== 'boolean')
     throw new TypeError(`bitset/pad: expected boolean, got ${typeof pad}`);

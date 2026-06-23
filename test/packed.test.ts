@@ -214,12 +214,13 @@ describe('primitives', () => {
     P.U64BE.decode(new Uint8Array(8));
     throws(() => P.U64BE.decode(new Uint8Array(9)));
 
-    const VarU64 = P.bigint(8, false, false, false, true);
-    const CompatU64 = P.bigint(8, false, false, false);
+    const VarU64 = P.bigint(8, false, false, false);
+    const CompatU64 = P.bigint(8, false, false, false, false);
     eql(VarU64.decode(Uint8Array.of()), 0n);
     eql(CompatU64.decode(Uint8Array.of(0, 10)), 10n);
     eql(CompatU64.decode(new Uint8Array(7)), 0n);
     eql(CompatU64.decode(new Uint8Array(8)), 0n);
+    eql(P.bigint(8, true, false, false, false).decode(Uint8Array.of(0, 1, 0)), 256n);
     throws(() => VarU64.decode(new Uint8Array(7)), {
       name: 'Error',
       message: 'Reader(): bigint: non-minimal encoding',
@@ -727,7 +728,7 @@ describe('primitives', () => {
   });
   should('signed unsized bigint', () => {
     const run = (le: boolean) => {
-      const coder = P.bigint(8, le, true, false, true);
+      const coder = P.bigint(8, le, true, false);
       const values = [
         -(2n ** 63n),
         -32769n,
@@ -757,7 +758,7 @@ describe('primitives', () => {
       });
     };
     const decode = (le: boolean, bytes: Uint8Array) =>
-      String(P.bigint(8, le, true, false).decode(bytes));
+      String(P.bigint(8, le, true, false, false).decode(bytes));
     eql(
       {
         be: run(false),
@@ -833,7 +834,7 @@ describe('primitives', () => {
       }
     );
     for (const le of [false, true]) {
-      const coder = P.bigint(8, le, true, false, true);
+      const coder = P.bigint(8, le, true, false);
       throws(() => coder.decode(Uint8Array.of(0x00)), {
         name: 'Error',
         message: 'Reader(): bigint: non-minimal encoding',
@@ -846,14 +847,15 @@ describe('primitives', () => {
   });
   should('signed unsized int', () => {
     const run = (le: boolean) => {
-      const coder = P.int(6, le, true, false, true);
+      const coder = P.int(6, le, true, false);
       const values = [-(2 ** 47), -32768, -128, -1, 0, 127, 128, 255, 32767, 32768, 2 ** 47 - 1];
       return values.map((value) => {
         const encoded = coder.encode(value);
         return { value, encoded: hex.encode(encoded), decoded: coder.decode(encoded) };
       });
     };
-    const decode = (le: boolean, bytes: Uint8Array) => P.int(6, le, true, false).decode(bytes);
+    const decode = (le: boolean, bytes: Uint8Array) =>
+      P.int(6, le, true, false, false).decode(bytes);
     eql(
       {
         be: run(false),
@@ -901,7 +903,7 @@ describe('primitives', () => {
       }
     );
     for (const le of [false, true]) {
-      const coder = P.int(6, le, true, false, true);
+      const coder = P.int(6, le, true, false);
       throws(() => coder.decode(Uint8Array.of(0x00)), {
         name: 'Error',
         message: 'Reader(): bigint: non-minimal encoding',
@@ -1143,9 +1145,9 @@ describe('structures', () => {
       });
     });
     should('names and values', () => {
-      const repeated = P.bitset(['_r', '_r', 'a'], true);
+      const repeated = P.bitset(['_r', '_r', 'a'], true, false);
       eql(repeated.decode(Uint8Array.of(0x20)), { _r: false, a: true });
-      throws(() => P.bitset(['a', 'a'], true, true), {
+      throws(() => P.bitset(['a', 'a'], true), {
         name: 'Error',
         message: 'bitset/names: duplicate name a',
       });
@@ -1177,21 +1179,21 @@ describe('structures', () => {
     should('padding bits', () => {
       const one = P.bitset(['a'], true);
       eql(one.decode(Uint8Array.of(0x80)), { a: true });
-      eql(one.decode(Uint8Array.of(0xff)), { a: true });
-      const strictOne = P.bitset(['a'], true, true);
-      throws(() => strictOne.decode(Uint8Array.of(0xff)), {
+      throws(() => one.decode(Uint8Array.of(0xff)), {
         name: 'Error',
         message: 'Reader(): bitset: non-zero padding bits',
       });
+      const looseOne = P.bitset(['a'], true, false);
+      eql(looseOne.decode(Uint8Array.of(0xff)), { a: true });
 
-      const three = P.bitset(['a', 'b', 'c'], true, true);
+      const three = P.bitset(['a', 'b', 'c'], true);
       eql(three.decode(Uint8Array.of(0xa0)), { a: true, b: false, c: true });
       throws(() => three.decode(Uint8Array.of(0xa1)), {
         name: 'Error',
         message: 'Reader(): bitset: non-zero padding bits',
       });
 
-      const aligned = P.bitset(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], true, true);
+      const aligned = P.bitset(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], true);
       eql(aligned.decode(Uint8Array.of(0xff)), {
         a: true,
         b: true,
@@ -2578,7 +2580,7 @@ describe('structures', () => {
           bytesEncoded: bytes.encode(undefined),
           objectRefDecoded: objectRef.decode(P.EMPTY),
           objectRefEncoded: objectRef.encode(undefined),
-          objectStructDecoded: objectStruct.decode(Uint8Array.of(2)),
+          objectStructDecoded: objectStruct.decode(Uint8Array.of(1)),
           objectStructEncoded: objectStruct.encode(undefined),
         },
         {
@@ -2592,6 +2594,10 @@ describe('structures', () => {
           objectStructEncoded: Uint8Array.of(1),
         }
       );
+      throws(() => objectStruct.decode(Uint8Array.of(2)), {
+        name: 'Error',
+        message: 'Reader(): magic: invalid value: [object Object] !== [object Object]',
+      });
       throws(() => P.magic(P.U8, 1).decode(Uint8Array.of(2)), {
         name: 'Error',
         message: 'Reader(): magic: invalid value: 2 !== 1',
@@ -2608,6 +2614,7 @@ describe('structures', () => {
         name: 'Error',
         message: 'Reader(): magic: invalid value: [object Object] !== 7',
       });
+      eql(P.magic(P.F32BE, NaN).decode(Uint8Array.of(0x7f, 0xc0, 0x00, 0x00)), undefined);
       const marker = Uint8Array.of(1, 2);
       const snap = P.magicBytes(marker);
       marker.fill(9);
