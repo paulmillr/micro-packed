@@ -1143,7 +1143,12 @@ describe('structures', () => {
       });
     });
     should('names and values', () => {
-      const repeated = P.bitset(['_r', '_r', 'a'], true);
+      // Duplicate names are rejected by default; strict=false keeps legacy behavior
+      throws(() => P.bitset(['_r', '_r', 'a'], true), {
+        name: 'Error',
+        message: 'bitset/names: duplicate name _r',
+      });
+      const repeated = P.bitset(['_r', '_r', 'a'], true, false);
       eql(repeated.decode(Uint8Array.of(0x20)), { _r: false, a: true });
       throws(() => P.bitset(['a', 'a'], true, true), {
         name: 'Error',
@@ -1175,9 +1180,17 @@ describe('structures', () => {
       });
     });
     should('padding bits', () => {
+      // Non-zero padding is a malleability vector: rejected by default,
+      // strict=false keeps legacy behavior
+      const legacyOne = P.bitset(['a'], true, false);
+      eql(legacyOne.decode(Uint8Array.of(0x80)), { a: true });
+      eql(legacyOne.decode(Uint8Array.of(0xff)), { a: true });
       const one = P.bitset(['a'], true);
       eql(one.decode(Uint8Array.of(0x80)), { a: true });
-      eql(one.decode(Uint8Array.of(0xff)), { a: true });
+      throws(() => one.decode(Uint8Array.of(0xff)), {
+        name: 'Error',
+        message: 'Reader(): bitset: non-zero padding bits',
+      });
       const strictOne = P.bitset(['a'], true, true);
       throws(() => strictOne.decode(Uint8Array.of(0xff)), {
         name: 'Error',
@@ -1261,6 +1274,11 @@ describe('structures', () => {
     eql(prefixed2.encode([1]), new Uint8Array([0, 2, 0, 1]));
     eql(prefixed2.encode([1, 2]), new Uint8Array([0, 4, 0, 1, 0, 2]));
     eql(prefixed2.encode([1, 2, 3]), new Uint8Array([0, 6, 0, 1, 0, 2, 0, 3]));
+    // Constructor argument mistakes are TypeError, like apply/array/struct
+    throws(() => P.prefix(P.U16BE, 1 as any), {
+      name: 'TypeError',
+      message: 'prefix: invalid inner value 1',
+    });
   });
 
   describe('array', () => {
@@ -1354,6 +1372,37 @@ describe('structures', () => {
         message: 'Reader(0): array: inner decoder did not consume input',
       });
       eql(P.array(null, P.bits(1)).decode(Uint8Array.of(0b10100000)), [1, 0, 1, 0, 0, 0, 0, 0]);
+      // Stream-provided lengths with zero-size inner would allocate `length` elements
+      // without consuming input: rejected at construction (fixed number lengths stay allowed).
+      throws(() => P.array(P.U32LE, P.constant(1)), {
+        name: 'Error',
+        message: 'array: dynamic length cannot use zero-size inner',
+      });
+      throws(() => P.array('len', inner), {
+        name: 'Error',
+        message: 'array: dynamic length cannot use zero-size inner',
+      });
+    });
+    should('hostile length prefix fails fast', () => {
+      // Claimed length is impossible for fixed-size elements: must throw before decoding elements.
+      const arr = P.array(P.U32LE, P.U32LE);
+      throws(() => arr.decode(Uint8Array.of(0xff, 0xff, 0xff, 0xff, 1, 2, 3, 4)), {
+        name: 'Error',
+        message: 'Reader(): array: length=4294967295 elements of size=4 exceed 4 bytes left',
+      });
+      // Exact fit still decodes
+      eql(arr.decode(Uint8Array.of(1, 0, 0, 0, 4, 3, 2, 1)), [0x01020304]);
+      // Path-based length gets the same guard
+      const s = P.struct({ len: P.U32LE, arr: P.array('len', P.U16BE) });
+      throws(() => s.decode(Uint8Array.of(0xff, 0xff, 0xff, 0xff, 0, 1)), {
+        name: 'Error',
+        message: 'Reader(arr): array: length=4294967295 elements of size=2 exceed 2 bytes left',
+      });
+      eql(s.decode(Uint8Array.of(1, 0, 0, 0, 0, 7)), { len: 1, arr: [7] });
+      // Dynamic-size inner (no size hint) keeps old behavior: fails on end of buffer
+      throws(() =>
+        P.array(P.U32LE, P.cstring).decode(Uint8Array.of(0xff, 0xff, 0xff, 0xff, 65, 0))
+      );
     });
     should('sz=null', () => {
       const a = P.array(null, P.U16BE);
@@ -1612,12 +1661,14 @@ describe('structures', () => {
   should('pathStack', () => {
     const log = [];
     // JSON as quick cloneDeep
+    // Array/tuple indices live on the stack as numbers (stringified lazily for errors/debugger);
+    // normalize to strings here to keep the expected fixture readable.
     const addLog = (rw, name) =>
       log.push(
         JSON.stringify({
           name,
           path: rw.stack.map((i) => i.obj),
-          fieldPath: rw.stack.map((i) => i.field).filter((i) => !!i),
+          fieldPath: rw.stack.filter((i) => i.field !== undefined).map((i) => `${i.field}`),
         })
       );
     const capture = (inner) =>
@@ -2143,6 +2194,41 @@ describe('structures', () => {
       const bool = P.optional(flag, P.bool);
       eql(bool.encode(false), new Uint8Array([0x0, 0x1, 0x0]));
       eql(bool.decode(new Uint8Array([0x0, 0x1, 0x0])), false);
+    });
+    should('default slot rejects non-default bytes', () => {
+      // Absent-flag default slots are a malleability carrier if not validated:
+      // any parseable inner encoding used to be silently accepted and discarded.
+      const opt = P.optional(P.bool, P.U32BE, 123);
+      eql(opt.decode(Uint8Array.of(0, 0, 0, 0, 123)), undefined);
+      throws(() => opt.decode(Uint8Array.of(0, 0xde, 0xad, 0xbe, 0xef)), {
+        name: 'Error',
+        message: 'Reader(): default: invalid value 3735928559 !== 123',
+      });
+      // Roundtrip of canonical absent encoding still works
+      eql(opt.decode(opt.encode(undefined)), undefined);
+      // Same guard for flagged() with path and with flag coder
+      const s = P.struct({
+        f: P.flag(Uint8Array.of(1)),
+        v: P.flagged('f', P.U16BE, 7),
+      });
+      eql(s.decode(Uint8Array.of(0, 7)), { f: false, v: undefined });
+      throws(() => s.decode(Uint8Array.of(0xaa, 0xbb)), {
+        name: 'Error',
+        message: 'Reader(v): default: invalid value 43707 !== 7',
+      });
+      const f2 = P.flagged(P.flag(Uint8Array.of(0, 1)), P.U8, 5);
+      eql(f2.decode(Uint8Array.of(5)), undefined);
+      throws(() => f2.decode(Uint8Array.of(6)), {
+        name: 'Error',
+        message: 'Reader(): default: invalid value 6 !== 5',
+      });
+      // Bytes defaults compare by content
+      const b = P.optional(P.bool, P.bytes(2), Uint8Array.of(1, 2));
+      eql(b.decode(Uint8Array.of(0, 1, 2)), undefined);
+      throws(() => b.decode(Uint8Array.of(0, 1, 3)), {
+        name: 'Error',
+        message: 'Reader(): default: invalid value 1,3 !== 1,2',
+      });
     });
     describe('pointer', () => {
       test('basic', {
@@ -3512,17 +3598,19 @@ describe('utils', () => {
       }
     });
     should('finish: clean owned buffers', () => {
+      // Writer-owned scratch lives in chunks (buffers[] holds {chunk,start,end} runs for them);
+      // finish() must zeroize the chunks while leaving caller-provided buffers untouched.
       const byte = new Writer();
       byte.byte(0xaa);
-      const byteRef = (byte as any).buffers[0];
+      const byteRef = (byte as any).buffers[0].chunk;
       const byteOut = byte.finish();
       const bits = new Writer();
       bits.bits(0b10101010, 8);
-      const bitsRef = (bits as any).buffers[0];
+      const bitsRef = (bits as any).buffers[0].chunk;
       const bitsOut = bits.finish();
       const view = new Writer();
-      view.writeView(4, (v) => v.setUint32(0, 0x11223344, false));
-      const viewRef = (view as any).buffers[0];
+      view.writeView(4, (v, pos) => v.setUint32(pos, 0x11223344, false));
+      const viewRef = (view as any).buffers[0].chunk;
       const viewOut = view.finish();
       const ptr = new Writer();
       P.pointer(P.U8, P.bytes(2)).encodeStream(ptr, Uint8Array.of(7, 8));
@@ -3532,16 +3620,13 @@ describe('utils', () => {
       const external = new Writer();
       external.bytes(externalRef);
       const externalOut = external.finish();
+      // Chunks are zeroized whole (their size exceeds the written data), caller buffers untouched.
+      const zeroed = (b: Uint8Array) => b.length > 0 && b.every((x) => x === 0);
       eql(
         {
           out: [byteOut, bitsOut, viewOut, ptrOut, externalOut],
-          refs: [
-            Array.from(byteRef),
-            Array.from(bitsRef),
-            Array.from(viewRef),
-            Array.from(ptrRef),
-            Array.from(externalRef),
-          ],
+          cleaned: [zeroed(byteRef), zeroed(bitsRef), zeroed(viewRef), zeroed(ptrRef)],
+          external: Array.from(externalRef),
         },
         {
           out: [
@@ -3551,9 +3636,36 @@ describe('utils', () => {
             Uint8Array.of(1, 7, 8),
             Uint8Array.of(9, 8),
           ],
-          refs: [[0], [0], [0, 0, 0, 0], [0, 0], [9, 8]],
+          cleaned: [true, true, true, true],
+          external: [9, 8],
         }
       );
+    });
+    should('writer: interleaved carved and caller buffers', () => {
+      // byte()/writeView() carve runs out of shared chunks; bytes() splices caller buffers
+      // between them by reference. Output order must match write order.
+      const w = new Writer();
+      w.byte(1);
+      w.bytes(Uint8Array.of(2, 3));
+      w.writeView(2, (v, pos) => v.setUint16(pos, 0x0405, false));
+      w.bytes(Uint8Array.of(6));
+      w.byte(7);
+      eql(w.finish(), Uint8Array.of(1, 2, 3, 4, 5, 6, 7));
+    });
+    should('writer: chunk boundary crossings', () => {
+      // 3-byte elements never divide the chunk sizes (64/512/4096), forcing carve() to seal
+      // chunks with unused tails; 6000 bytes crosses several chunk generations.
+      const coder = P.array(null, P.int(3, false));
+      const value = Array.from({ length: 2000 }, (_, i) => (i * 7919) % 2 ** 24);
+      eql(coder.decode(coder.encode(value)), value);
+      // Same for a single oversized bytes write next to carved writes.
+      const w = new Writer();
+      w.writeView(4, (v, pos) => v.setUint32(pos, 0xdeadbeef, false));
+      const big = new Uint8Array(10000).fill(0x42);
+      w.bytes(big);
+      w.byte(0x99);
+      const out = w.finish();
+      eql([out.length, out[0], out[4], out[10003], out[10004]], [10005, 0xde, 0x42, 0x42, 0x99]);
     });
     should('writeView: invalid length', () => {
       const w = new Writer();
