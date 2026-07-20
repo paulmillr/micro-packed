@@ -7,11 +7,9 @@ import {
   type Bytes,
   type CoderType,
   type Reader,
-  type StructOut,
   type TArg,
   type TRet,
   type Writer,
-  type _PathObjFn,
 } from './index.ts';
 
 const UNKNOWN = '(???)';
@@ -35,50 +33,45 @@ const DebugReader = /* @__PURE__ */ (() =>
       if (this.debugLst.length) return this.debugLst[this.debugLst.length - 1];
       return { start: 0, end: 0, path: '' };
     }
-    pushObj(obj: StructOut, objFn: _PathObjFn) {
-      return _TEST.Path.pushObj(this.stack, obj, (cb) => {
-        objFn((field: string, fieldFn: Function) => {
-          cb(field, () => {
-            {
-              const last = this.lastElm;
-              if (last.end === undefined) last.end = this.pos;
-              else if (last.end !== this.pos) {
-                this.debugLst.push({
-                  path: `${_TEST.Path.path(this.stack)}/${UNKNOWN}`,
-                  start: last.end,
-                  end: this.pos,
-                });
-              }
-              this.cur = { path: `${_TEST.Path.path(this.stack)}/${field}`, start: this.pos };
-            }
-            fieldFn();
-            {
-              // happens if pop after pop (exit from nested structure)
-              // Nested struct-like fields emit child entries instead of a parent entry,
-              // so unwinding leaves `this.cur` cleared by the inner callback.
-              if (!this.cur) {
-                const last = this.lastElm;
-                if (last.end === undefined) last.end = this.pos;
-                else if (last.end !== this.pos) {
-                  this.debugLst.push({
-                    start: last.end,
-                    end: this.pos,
-                    path: last.path + `/${UNKNOWN}`,
-                  });
-                }
-              } else {
-                this.cur.end = this.pos;
-                const last = this.stack[this.stack.length - 1];
-                const lastItem = last.obj;
-                const lastField = last.field;
-                if (lastItem && lastField !== undefined) this.cur.value = lastItem[lastField];
-                this.debugLst.push(this.cur);
-                this.cur = undefined;
-              }
-            }
-          });
+    enterField(field: string | number) {
+      // Set the field first: emitted paths always included the current leaf.
+      super.enterField(field);
+      const last = this.lastElm;
+      if (last.end === undefined) last.end = this.pos;
+      else if (last.end !== this.pos) {
+        this.debugLst.push({
+          path: `${_TEST.Path.path(this.stack)}/${UNKNOWN}`,
+          start: last.end,
+          end: this.pos,
         });
-      });
+      }
+      this.cur = { path: `${_TEST.Path.path(this.stack)}/${field}`, start: this.pos };
+    }
+    // Not called when the field decode throws; finishDebug() flushes the dangling `cur`.
+    exitField() {
+      // happens if pop after pop (exit from nested structure)
+      // Nested struct-like fields emit child entries instead of a parent entry,
+      // so unwinding leaves `this.cur` cleared by the inner field.
+      if (!this.cur) {
+        const last = this.lastElm;
+        if (last.end === undefined) last.end = this.pos;
+        else if (last.end !== this.pos) {
+          this.debugLst.push({
+            start: last.end,
+            end: this.pos,
+            path: last.path + `/${UNKNOWN}`,
+          });
+        }
+      } else {
+        this.cur.end = this.pos;
+        const last = this.stack[this.stack.length - 1];
+        const lastItem = last.obj;
+        const lastField = last.field;
+        if (lastItem && lastField !== undefined) this.cur.value = lastItem[lastField];
+        this.debugLst.push(this.cur);
+        this.cur = undefined;
+      }
+      super.exitField();
     }
 
     finishDebug(): void {

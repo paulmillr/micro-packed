@@ -493,9 +493,11 @@ const Bitset = /* @__PURE__ */ Object.freeze({
 });
 
 /** Path related utils (internal) */
-type Path = { obj: StructOut; field?: string };
+// `field` stays a number for array/tuple indices and is stringified lazily in path():
+// hot decode/encode loops must not allocate a string per element just for diagnostics.
+type Path = { obj: StructOut; field?: string | number };
 type PathStack = Path[];
-export type _PathObjFn = (cb: (field: string, fieldFn: Function) => void) => void;
+export type _PathObjFn = () => void;
 type PathUtils = {
   pushObj: (stack: PathStack, obj: StructOut, objFn: _PathObjFn) => void;
   path: (stack: PathStack) => string;
@@ -505,27 +507,20 @@ type PathUtils = {
 const Path: PathUtils = /* @__PURE__ */ Object.freeze({
   /**
    * Internal method for handling stack of paths (debug, errors, dynamic fields via path)
-   * This callback shape forces stack cleanup by construction:
    * `.pop()` always happens after the wrapped function.
-   * Also, this makes impossible:
-   * - pushing field when stack is empty
-   * - pushing field inside of field (real bug)
+   * Fields inside the object are tracked via Reader/Writer enterField()/exitField(),
+   * which the debugger overrides to observe per-field byte ranges.
    * NOTE: we don't want to do '.pop' on error!
    */
   pushObj: (stack: PathStack, obj: StructOut, objFn: _PathObjFn): void => {
-    const last: Path = { obj };
-    stack.push(last);
-    objFn((field: string, fieldFn: Function) => {
-      last.field = field;
-      // Intentionally keep last.field set on throw so Path.err() can report the failing leaf.
-      fieldFn();
-      last.field = undefined;
-    });
+    stack.push({ obj });
+    objFn();
     stack.pop();
   },
   path: (stack: PathStack): string => {
     const res = [];
-    for (const i of stack) if (i.field !== undefined) res.push(i.field === '' ? '""' : i.field);
+    for (const i of stack)
+      if (i.field !== undefined) res.push(i.field === '' ? '""' : `${i.field}`);
     // Path.err() uses this string for user-visible context. Empty keys need explicit rendering so
     // field("") is distinguishable from the root path; slash-containing keys are still raw.
     return res.join('/');
@@ -734,6 +729,17 @@ class _Reader implements Reader {
   pushObj(obj: StructOut, objFn: _PathObjFn): void {
     return Path.pushObj(this.stack, obj, objFn);
   }
+  enterField(field: string | number): void {
+    const last = this.stack[this.stack.length - 1];
+    // A field outside any pushObj() scope or nested inside another field is a coder bug.
+    if (last === undefined || last.field !== undefined)
+      throw this.err(`enterField: invalid stack state, field=${field}`);
+    last.field = field;
+  }
+  // Intentionally not called on throw, so Path.err() can report the failing leaf.
+  exitField(): void {
+    this.stack[this.stack.length - 1].field = undefined;
+  }
   readView(n: number, fn: (view: DataView, pos: number) => number): number {
     if (!isNum(n) || n < 0) throw this.err(`readView: wrong length=${n}`);
     if (this.pos + n > this.data.length) throw this.err('readView: Unexpected end of buffer');
@@ -847,35 +853,73 @@ class _Reader implements Reader {
  * The `stack` argument of constructor is internal, for debugging and logs.
  * @class Writer
  */
+// A contiguous span of writer-owned bytes carved out of a chunk. Kept mutable so consecutive
+// byte()/writeView() calls extend the open run instead of pushing one buffer per write.
+type ChunkRun = { chunk: Uint8Array; start: number; end: number };
 class _Writer implements Writer {
   pos: number = 0;
   readonly stack: PathStack;
-  // We could have a single buffer here and re-alloc it with
-  // x1.5-2 size each time it full, but it will be slower:
-  // basic/encode bench: 395ns -> 560ns
-  private buffers: Bytes[] = [];
-  private cleanBuffers: Bytes[] = [];
+  // Small writes are carved out of writer-owned chunks; caller-provided bytes() buffers are kept
+  // by reference between them. A single realloc'd buffer was measured slower for tiny encodes
+  // (basic/encode bench: 395ns -> 560ns), copy-on-grow is what chunking avoids.
+  private buffers: (Bytes | ChunkRun)[] = [];
+  // Every chunk ever allocated by this writer, so finish(clean) can zeroize them whole.
+  private chunks: Bytes[] = [];
+  private chunk: Uint8Array | undefined;
+  private chunkView: DataView | undefined; // lazy: only writeView() needs it
+  private chunkPos = 0;
+  private run: ChunkRun | undefined;
+  private nextChunkSize = 0; // 0 = size the first chunk to the first write
   ptrs: { pos: number; ptr: CoderType<number>; buffer: Bytes }[] = [];
   private bitBuf = 0;
   private bitPos = 0;
-  private viewBuf = new Uint8Array(8);
-  private view: DataView;
   private finished = false;
   constructor(stack: PathStack = []) {
     this.stack = stack;
-    this.view = createView(this.viewBuf);
+  }
+  // Reserves `len` contiguous writer-owned bytes and returns their offset inside `this.chunk`.
+  private carve(len: number): number {
+    if (this.chunk === undefined || this.chunk.length - this.chunkPos < len) {
+      // Chunks grow geometrically to amortize allocations, capped to bound over-allocation and
+      // zeroization work. The 64-byte floor keeps small encodes in one chunk (one lazy DataView).
+      const size = Math.max(len, this.nextChunkSize, 64);
+      this.nextChunkSize = Math.min(size * 8, 4096);
+      this.chunk = new Uint8Array(size);
+      this.chunkView = undefined;
+      this.chunkPos = 0;
+      this.run = undefined;
+      this.chunks.push(this.chunk);
+    }
+    const pos = this.chunkPos;
+    if (this.run === undefined) {
+      this.run = { chunk: this.chunk, start: pos, end: pos + len };
+      this.buffers.push(this.run);
+    } else this.run.end += len;
+    this.chunkPos = pos + len;
+    this.pos += len;
+    return pos;
   }
   pushObj(obj: StructOut, objFn: _PathObjFn): void {
     return Path.pushObj(this.stack, obj, objFn);
   }
-  writeView(len: number, fn: (view: DataView) => void): void {
+  enterField(field: string | number): void {
+    const last = this.stack[this.stack.length - 1];
+    // A field outside any pushObj() scope or nested inside another field is a coder bug.
+    if (last === undefined || last.field !== undefined)
+      throw this.err(`enterField: invalid stack state, field=${field}`);
+    last.field = field;
+  }
+  // Intentionally not called on throw, so Path.err() can report the failing leaf.
+  exitField(): void {
+    this.stack[this.stack.length - 1].field = undefined;
+  }
+  writeView(len: number, fn: (view: DataView, pos: number) => void): void {
     if (this.finished) throw this.err('buffer: finished');
     if (!isNum(len) || len < 0 || len > 8) throw new Error(`wrong writeView length=${len}`);
-    fn(this.view);
-    const buf = this.viewBuf.slice(0, len);
-    this.bytes(buf);
-    this.cleanBuffers.push(buf);
-    this.viewBuf.fill(0);
+    if (this.bitPos) throw this.err('writeBytes: ends with non-empty bit buffer');
+    const pos = this.carve(len);
+    if (this.chunkView === undefined) this.chunkView = createView(this.chunk!);
+    fn(this.chunkView, pos);
   }
   // User methods
   err(msg: string | Error): Error {
@@ -889,28 +933,44 @@ class _Writer implements Writer {
     // Keep caller-provided buffers by reference until finish(); mutating them afterwards changes
     // the encoded output.
     this.buffers.push(b);
+    // Later carved writes must not merge into a run that would be emitted before `b`.
+    this.run = undefined;
     this.pos += b.length;
   }
   byte(b: number): void {
     if (this.finished) throw this.err('buffer: finished');
     if (this.bitPos) throw this.err('writeByte: ends with non-empty bit buffer');
     if (!isNum(b) || b < 0 || b > 255) throw this.err(`writeByte: wrong value=${b}`);
-    const buf = new Uint8Array([b]);
-    this.buffers.push(buf);
-    this.cleanBuffers.push(buf);
-    this.pos++;
+    // carve() first: it may allocate/replace this.chunk.
+    const pos = this.carve(1);
+    this.chunk![pos] = b;
   }
   finish(clean = true): Bytes {
     if (this.finished) throw this.err('buffer: finished');
     if (this.bitPos) throw this.err('buffer: ends with non-empty bit buffer');
     // Can't use concatBytes, because it limits amount of arguments (65K).
-    const buffers = this.buffers.concat(this.ptrs.map((i) => i.buffer));
-    const sum = buffers.map((b) => b.length).reduce((a, b) => a + b, 0);
+    const buffers = this.buffers;
+    let sum = 0;
+    for (let i = 0; i < buffers.length; i++) {
+      const b = buffers[i];
+      sum += isBytes(b) ? b.length : b.end - b.start;
+    }
+    for (let i = 0; i < this.ptrs.length; i++) sum += this.ptrs[i].buffer.length;
     const buf = new Uint8Array(sum);
-    for (let i = 0, pad = 0; i < buffers.length; i++) {
-      const a = buffers[i];
-      buf.set(a, pad);
-      pad += a.length;
+    let pad = 0;
+    for (let i = 0; i < buffers.length; i++) {
+      const b = buffers[i];
+      if (isBytes(b)) {
+        buf.set(b, pad);
+        pad += b.length;
+      } else {
+        buf.set(b.chunk.subarray(b.start, b.end), pad);
+        pad += b.end - b.start;
+      }
+    }
+    for (let i = 0; i < this.ptrs.length; i++) {
+      buf.set(this.ptrs[i].buffer, pad);
+      pad += this.ptrs[i].buffer.length;
     }
 
     for (let pos = this.pos, i = 0; i < this.ptrs.length; i++) {
@@ -920,10 +980,15 @@ class _Writer implements Writer {
     }
     // Cleanup
     if (clean) {
-      // bytes() keeps caller-provided buffers by reference, so only writer-owned buffers are tracked.
-      for (const b of this.cleanBuffers) b.fill(0);
+      // bytes() keeps caller-provided buffers by reference, so only writer-owned chunks are
+      // zeroized — whole, including unused tails: same hygiene as per-buffer cleanup.
+      for (const c of this.chunks) c.fill(0);
+      this.chunks = [];
+      this.chunk = undefined;
+      this.chunkView = undefined;
+      this.chunkPos = 0;
+      this.run = undefined;
       this.buffers = [];
-      this.cleanBuffers = [];
       for (const p of this.ptrs) p.buffer.fill(0);
       this.ptrs = [];
       this.finished = true;
@@ -946,10 +1011,10 @@ class _Writer implements Writer {
       value &= 2 ** bits - 1;
       if (this.bitPos === 8) {
         this.bitPos = 0;
-        const buf = new Uint8Array([this.bitBuf]);
-        this.buffers.push(buf);
-        this.cleanBuffers.push(buf);
-        this.pos++;
+        // carve() first: it may allocate/replace this.chunk. The Uint8Array store wraps mod 256,
+        // matching the previous `new Uint8Array([bitBuf])` semantics for int32-coerced values.
+        const pos = this.carve(1);
+        this.chunk![pos] = this.bitBuf;
       }
     }
   }
@@ -1417,6 +1482,8 @@ export const bits = (len: number): CoderType<number> => {
  * @param signed - Whether the bigint is signed.
  * @param sized - Whether the bigint should have a fixed size.
  * @param minimal - Whether unsized decoding should reject redundant zero/sign-extension bytes.
+ * Without it, `01` and `00 01` decode to the same value (a malleability vector): set
+ * `minimal: true` whenever encodings must be canonical (consensus data, signed payloads).
  * @returns CoderType representing the bigint value.
  * @throws On invalid bigint coder configuration or out-of-bounds bigint values. {@link Error}
  * @throws On wrong builder argument or wrapped numeric value types. {@link TypeError}
@@ -1451,12 +1518,12 @@ export const bigint = (
     encodeStream: (w: TArg<Writer>, value: bigint) => {
       const zero = value === _0n;
       if (signed && value < 0) value = value | signBit;
-      const b = [];
-      for (let i = 0; i < size; i++) {
-        b.push(Number(value & _255n));
+      // Fill big-endian in place; trimming below relies on BE order.
+      let res = new Uint8Array(size);
+      for (let i = size - 1; i >= 0; i--) {
+        res[i] = Number(value & _255n);
         value >>= _8n;
       }
-      let res = new Uint8Array(b).reverse();
       if (!sized) {
         let pos = 0;
         if (signed) {
@@ -1479,9 +1546,10 @@ export const bigint = (
       // TODO: for le we can read until first zero?
       const value = r.bytes(sized ? size : Math.min(size, r.leftBytes));
       if (!sized && minimal) checkMinimalBigintBytes(value, le, signed, (msg) => r.err(msg));
-      const b = le ? value : swapEndianness(value);
+      // Accumulate most-significant byte first: avoids swapEndianness copy and per-byte shift bigints.
       let res = _0n;
-      for (let i = 0; i < b.length; i++) res |= BigInt(b[i]) << (_8n * BigInt(i));
+      if (le) for (let i = value.length - 1; i >= 0; i--) res = (res << _8n) | BigInt(value[i]);
+      else for (let i = 0; i < value.length; i++) res = (res << _8n) | BigInt(value[i]);
       const sBit = sized || !value.length ? signBit : _2n ** (_8n * BigInt(value.length) - _1n);
       if (signed && res & sBit) res = (res ^ sBit) - sBit;
       return res;
@@ -1557,6 +1625,8 @@ export const I64BE: CoderType<bigint> = /* @__PURE__ */ Object.freeze(
  * @param signed - Whether the number is signed.
  * @param sized - Whether the number should have a fixed size.
  * @param minimal - Whether unsized decoding should reject redundant zero/sign-extension bytes.
+ * Without it, `01` and `00 01` decode to the same value (a malleability vector): set
+ * `minimal: true` whenever encodings must be canonical (consensus data, signed payloads).
  * @returns CoderType representing the number value.
  * @throws On invalid number-coder configuration or out-of-bounds values. {@link Error}
  * @throws On wrong builder argument or wrapped numeric value types. {@link TypeError}
@@ -1588,7 +1658,7 @@ export const int = (
 
 type ViewCoder = {
   read: (view: DataView, pos: number) => number;
-  write: (view: DataView, value: number) => void;
+  write: (view: DataView, pos: number, value: number) => void;
   validate?: (value: number) => void;
 };
 
@@ -1596,7 +1666,7 @@ const view = (len: number, opts: ViewCoder) =>
   wrap({
     size: len,
     encodeStream: (w: TArg<Writer>, value: number) =>
-      (w as _Writer).writeView(len, (view) => opts.write(view, value)),
+      (w as _Writer).writeView(len, (view, pos) => opts.write(view, pos, value)),
     decodeStream: (r: TArg<Reader>) => (r as _Reader).readView(len, opts.read),
     validate: (value: number) => {
       if (typeof value !== 'number')
@@ -1636,70 +1706,70 @@ const intView = (len: number, signed: boolean, opts: ViewCoder) => {
 export const U32LE: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(4, false, {
     read: (view, pos) => view.getUint32(pos, true),
-    write: (view, value) => view.setUint32(0, value, true),
+    write: (view, pos, value) => view.setUint32(pos, value, true),
   })
 );
 /** Unsigned 32-bit big-endian integer CoderType. */
 export const U32BE: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(4, false, {
     read: (view, pos) => view.getUint32(pos, false),
-    write: (view, value) => view.setUint32(0, value, false),
+    write: (view, pos, value) => view.setUint32(pos, value, false),
   })
 );
 /** Signed 32-bit little-endian integer CoderType. */
 export const I32LE: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(4, true, {
     read: (view, pos) => view.getInt32(pos, true),
-    write: (view, value) => view.setInt32(0, value, true),
+    write: (view, pos, value) => view.setInt32(pos, value, true),
   })
 );
 /** Signed 32-bit big-endian integer CoderType. */
 export const I32BE: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(4, true, {
     read: (view, pos) => view.getInt32(pos, false),
-    write: (view, value) => view.setInt32(0, value, false),
+    write: (view, pos, value) => view.setInt32(pos, value, false),
   })
 );
 /** Unsigned 16-bit little-endian integer CoderType. */
 export const U16LE: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(2, false, {
     read: (view, pos) => view.getUint16(pos, true),
-    write: (view, value) => view.setUint16(0, value, true),
+    write: (view, pos, value) => view.setUint16(pos, value, true),
   })
 );
 /** Unsigned 16-bit big-endian integer CoderType. */
 export const U16BE: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(2, false, {
     read: (view, pos) => view.getUint16(pos, false),
-    write: (view, value) => view.setUint16(0, value, false),
+    write: (view, pos, value) => view.setUint16(pos, value, false),
   })
 );
 /** Signed 16-bit little-endian integer CoderType. */
 export const I16LE: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(2, true, {
     read: (view, pos) => view.getInt16(pos, true),
-    write: (view, value) => view.setInt16(0, value, true),
+    write: (view, pos, value) => view.setInt16(pos, value, true),
   })
 );
 /** Signed 16-bit big-endian integer CoderType. */
 export const I16BE: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(2, true, {
     read: (view, pos) => view.getInt16(pos, false),
-    write: (view, value) => view.setInt16(0, value, false),
+    write: (view, pos, value) => view.setInt16(pos, value, false),
   })
 );
 /** Unsigned 8-bit integer CoderType. */
 export const U8: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(1, false, {
     read: (view, pos) => view.getUint8(pos),
-    write: (view, value) => view.setUint8(0, value),
+    write: (view, pos, value) => view.setUint8(pos, value),
   })
 );
 /** Signed 8-bit integer CoderType. */
 export const I8: CoderType<number> = /* @__PURE__ */ Object.freeze(
   /* @__PURE__ */ intView(1, true, {
     read: (view, pos) => view.getInt8(pos),
-    write: (view, value) => view.setInt8(0, value),
+    write: (view, pos, value) => view.setInt8(pos, value),
   })
 );
 
@@ -1718,7 +1788,7 @@ const f32 = (le = false) => {
     size: 4,
     encodeStream: (w: TArg<Writer>, value: number) => {
       if (Number.isNaN(value)) return w.bytes(nan as TRet<Bytes>);
-      return (w as _Writer).writeView(4, (view) => view.setFloat32(0, value, le));
+      return (w as _Writer).writeView(4, (view, pos) => view.setFloat32(pos, value, le));
     },
     decodeStream: (r: TArg<Reader>): number => {
       const _r = r as _Reader;
@@ -1746,7 +1816,7 @@ const f64 = (le = false) => {
     size: 8,
     encodeStream: (w: TArg<Writer>, value: number) => {
       if (Number.isNaN(value)) return w.bytes(nan as TRet<Bytes>);
-      return (w as _Writer).writeView(8, (view) => view.setFloat64(0, value, le));
+      return (w as _Writer).writeView(8, (view, pos) => view.setFloat64(pos, value, le));
     },
     decodeStream: (r: TArg<Reader>): number => {
       const _r = r as _Reader;
@@ -1880,7 +1950,8 @@ export { createBytes as bytes, createHex as hex };
  * ```
  */
 export function prefix<T>(len: Length, inner: CoderType<T>): CoderType<T> {
-  if (!isCoder(inner)) throw new Error(`prefix: invalid inner value ${inner}`);
+  // Constructor argument validation uses TypeError, same as apply/array/struct.
+  if (!isCoder(inner)) throw new TypeError(`prefix: invalid inner value ${inner}`);
   return apply(createBytes(len), reverse(inner)) as CoderType<T>;
 }
 
@@ -2044,6 +2115,13 @@ export function lazy<T>(fn: () => CoderType<T>): CoderType<T> {
  * @returns CoderType representing the flag value.
  * @throws On wrong flag argument or value types. {@link TypeError}
  * @throws If the marker is empty. {@link Error}
+ *
+ * WARNING: a flag is decoded by peeking at the next bytes, so the field that follows it
+ * must never be able to start with the marker bytes. Otherwise encode/decode is
+ * ambiguous: `{ flag: absent, data: <starts with marker> }` re-decodes as
+ * `{ flag: present, data: <rest> }`. There is no local guard against this (the flag
+ * cannot see the following coder); choose a marker that cannot collide, or place the
+ * flag where collision is impossible (e.g. before fixed-alphabet data).
  * @example
  * Toggle a boolean based on whether a marker is present.
  * ```ts
@@ -2085,6 +2163,26 @@ export const flag = (flagValue: TArg<Bytes>, xor = false): CoderType<boolean | u
     },
   });
 };
+
+/**
+ * Absent-flag default slots must hold the canonical default encoding: otherwise they
+ * carry arbitrary bytes that vanish on re-encode (malleability). Object defaults follow
+ * magic(): decoded values are fresh objects and deep-equal semantics are out of scope,
+ * so comparison is skipped only when both sides are non-byte objects.
+ * Contextual stream coders cannot be compared as standalone bytes, so normalizing coders must
+ * receive a decoder-canonical default. NaN is the exception because it cannot equal itself.
+ */
+function validateDefaultSlot<T>(r: TArg<Reader>, value: T, def: T): void {
+  const valueObj = value !== null && typeof value === 'object' && !isBytes(value);
+  const defObj = def !== null && typeof def === 'object' && !isBytes(def);
+  const nan =
+    typeof value === 'number' &&
+    typeof def === 'number' &&
+    Number.isNaN(value) &&
+    Number.isNaN(def);
+  if ((!valueObj || !defObj) && !equal(value, def) && !nan)
+    throw r.err(`default: invalid value ${value} !== ${def}`);
+}
 
 /**
  * Conditional CoderType that encodes/decodes a value only if a flag is present.
@@ -2141,7 +2239,7 @@ export function flagged<T>(
       else hasFlag = path.decodeStream(r);
       // If there is a flag -- decode and return value
       if (hasFlag) return inner.decodeStream(r);
-      else if (hasDef) inner.decodeStream(r);
+      else if (hasDef) validateDefaultSlot(r, inner.decodeStream(r), def!);
       return;
     },
   });
@@ -2189,7 +2287,7 @@ export function optional<T>(
     },
     decodeStream: (r: TArg<Reader>): Option<T> => {
       if (flag.decodeStream(r)) return inner.decodeStream(r);
-      else if (hasDef) inner.decodeStream(r);
+      else if (hasDef) validateDefaultSlot(r, inner.decodeStream(r), def!);
       return;
     },
   });
@@ -2289,7 +2387,7 @@ function sizeof(fields: CoderType<any>[]): Option<number> {
   let size: Option<number> = 0;
   for (const f of fields) {
     if (f.size === undefined) return;
-    if (!isNum(f.size)) throw new Error(`sizeof: wrong element size=${size}`);
+    if (!isNum(f.size)) throw new Error(`sizeof: wrong element size=${f.size}`);
     size += f.size;
   }
   return size;
@@ -2334,15 +2432,24 @@ export function struct<T extends Record<string, any>>(
   return wrap({
     size: sizeof(coders),
     encodeStream: (w: TArg<Writer>, value: StructInput<T>) => {
-      (w as _Writer).pushObj(value, (fieldFn) => {
-        for (const name in fields)
-          fieldFn(name, () => fields[name].encodeStream(w, (value as T)[name]));
+      const _w = w as _Writer;
+      _w.pushObj(value, () => {
+        for (const name in fields) {
+          _w.enterField(name);
+          fields[name].encodeStream(w, (value as T)[name]);
+          _w.exitField();
+        }
       });
     },
     decodeStream: (r: TArg<Reader>): StructInput<T> => {
       const res: Partial<T> = {};
-      (r as _Reader).pushObj(res, (fieldFn) => {
-        for (const name in fields) fieldFn(name, () => (res[name] = fields[name].decodeStream(r)));
+      const _r = r as _Reader;
+      _r.pushObj(res, () => {
+        for (const name in fields) {
+          _r.enterField(name);
+          res[name] = fields[name].decodeStream(r);
+          _r.exitField();
+        }
       });
       return res as T;
     },
@@ -2384,16 +2491,24 @@ export function tuple<
     encodeStream: (w: TArg<Writer>, value: O) => {
       // TODO: fix types
       if (!Array.isArray(value)) throw w.err(`tuple: invalid value ${value}`);
-      (w as _Writer).pushObj(value, (fieldFn) => {
-        for (let i = 0; i < fields.length; i++)
-          fieldFn(`${i}`, () => fields[i].encodeStream(w, value[i]));
+      const _w = w as _Writer;
+      _w.pushObj(value, () => {
+        for (let i = 0; i < fields.length; i++) {
+          _w.enterField(i);
+          fields[i].encodeStream(w, value[i]);
+          _w.exitField();
+        }
       });
     },
     decodeStream: (r: TArg<Reader>): O => {
       const res: any = [];
-      (r as _Reader).pushObj(res, (fieldFn) => {
-        for (let i = 0; i < fields.length; i++)
-          fieldFn(`${i}`, () => res.push(fields[i].decodeStream(r)));
+      const _r = r as _Reader;
+      _r.pushObj(res, () => {
+        for (let i = 0; i < fields.length; i++) {
+          _r.enterField(i);
+          res.push(fields[i].decodeStream(r));
+          _r.exitField();
+        }
       });
       return res;
     },
@@ -2440,30 +2555,34 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
   // Unbounded arrays must make cursor progress; zero-size children would loop forever.
   if (len === null && inner.size === 0)
     throw new Error('array: null length cannot use zero-size inner');
+  // Stream-provided lengths are attacker-controlled: a zero-size inner would allocate
+  // `length` elements without consuming input (memory DoS). Fixed number lengths are
+  // schema constants and stay allowed; terminator arrays have runtime progress checks.
+  if ((isCoder(len) || typeof len === 'string') && inner.size === 0)
+    throw new Error('array: dynamic length cannot use zero-size inner');
   return wrap({
     // `size: 0` is a valid fixed-size hint and must compose through arrays/tuples/structs.
     size: typeof len === 'number' && inner.size !== undefined ? len * inner.size : undefined,
     encodeStream: (w: TArg<Writer>, value: T[]) => {
       const _w = w as _Writer;
-      _w.pushObj(value, (fieldFn) => {
+      _w.pushObj(value, () => {
         if (!terminator) _length.encodeStream(w, value.length);
         for (let i = 0; i < value.length; i++) {
-          fieldFn(`${i}`, () => {
-            const elm = value[i];
-            const startPos = (w as _Writer).pos;
-            inner.encodeStream(w, elm);
-            if (terminator) {
-              // Terminator is bigger than elm size, so skip
-              if (terminator.length > _w.pos - startPos) return;
-              const data = _w.finish(false).subarray(startPos, _w.pos);
-              // There is still possible case when multiple elements create terminator,
-              // but it is hard to catch here, will be very slow
-              if (equalBytes(data.subarray(0, terminator.length), terminator))
-                throw _w.err(
-                  `array: inner element encoding same as separator. elm=${elm} data=${data}`
-                );
-            }
-          });
+          _w.enterField(i);
+          const elm = value[i];
+          const startPos = _w.pos;
+          inner.encodeStream(w, elm);
+          // Terminator is bigger than elm size, so skip
+          if (terminator && terminator.length <= _w.pos - startPos) {
+            const data = _w.finish(false).subarray(startPos, _w.pos);
+            // There is still possible case when multiple elements create terminator,
+            // but it is hard to catch here, will be very slow
+            if (equalBytes(data.subarray(0, terminator.length), terminator))
+              throw _w.err(
+                `array: inner element encoding same as separator. elm=${elm} data=${data}`
+              );
+          }
+          _w.exitField();
         }
       });
       if (terminator) w.bytes(terminator);
@@ -2471,17 +2590,17 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
     decodeStream: (r: TArg<Reader>): T[] => {
       const res: T[] = [];
       const _r = r as _Reader;
-      _r.pushObj(res, (fieldFn) => {
+      _r.pushObj(res, () => {
         if (len === null) {
           for (let i = 0; !r.isEnd(); i++) {
-            fieldFn(`${i}`, () => {
-              // Dynamic coders can advertise unknown size while consuming zero bits; unbounded
-              // loops must check actual progress instead of trusting size metadata.
-              const progress = _r.progress();
-              res.push(inner.decodeStream(r));
-              if (_r.progress() === progress)
-                throw r.err('array: inner decoder did not consume input');
-            });
+            _r.enterField(i);
+            // Dynamic coders can advertise unknown size while consuming zero bits; unbounded
+            // loops must check actual progress instead of trusting size metadata.
+            const progress = _r.progress();
+            res.push(inner.decodeStream(r));
+            if (_r.progress() === progress)
+              throw r.err('array: inner decoder did not consume input');
+            _r.exitField();
             if (inner.size && r.leftBytes < inner.size) break;
           }
         } else if (terminator) {
@@ -2491,17 +2610,28 @@ export function array<T>(len: Length, inner: CoderType<T>): CoderType<T[]> {
               r.bytes(terminator.length);
               break;
             }
-            fieldFn(`${i}`, () => {
-              const progress = _r.progress();
-              res.push(inner.decodeStream(r));
-              if (_r.progress() === progress)
-                throw r.err('array: inner decoder did not consume input');
-            });
+            _r.enterField(i);
+            const progress = _r.progress();
+            res.push(inner.decodeStream(r));
+            if (_r.progress() === progress)
+              throw r.err('array: inner decoder did not consume input');
+            _r.exitField();
           }
         } else {
-          let length: number;
-          fieldFn('arrayLen', () => (length = _length.decodeStream(r)));
-          for (let i = 0; i < length!; i++) fieldFn(`${i}`, () => res.push(inner.decodeStream(r)));
+          _r.enterField('arrayLen');
+          const length = _length.decodeStream(r);
+          _r.exitField();
+          // Fixed-size elements consume exactly `size` bytes each: reject impossible lengths
+          // before element decoding so hostile length prefixes fail fast without allocations.
+          if (inner.size && length * inner.size > r.leftBytes)
+            throw r.err(
+              `array: length=${length} elements of size=${inner.size} exceed ${r.leftBytes} bytes left`
+            );
+          for (let i = 0; i < length; i++) {
+            _r.enterField(i);
+            res.push(inner.decodeStream(r));
+            _r.exitField();
+          }
         }
       });
       return res;
@@ -2717,10 +2847,12 @@ export function mappedTag<
  * Note: bits follow `names` order and are written most-significant-bit first
  * within each byte; non-byte-aligned `pad=false` bitsets must be composed with
  * more bit-level coders.
- * Note: strict mode is opt-in for legacy compatibility with callers that used
- * repeated reserved names or accept non-zero padding bits.
- * Note: the names array is retained by reference; mutating it after construction
- * changes encoding and decoding.
+ * Note: strict mode is the default: it rejects duplicate names and non-zero padding
+ * bits, since ignored padding bits are a malleability vector (hidden data survives
+ * decode and vanishes on re-encode). Pass `strict: false` only for legacy data that
+ * requires repeated names or junk padding.
+ * Note: the names array is retained by reference. Do not mutate it after construction:
+ * doing so invalidates size metadata and breaks encoding and decoding.
  * @example
  * Pack several named booleans into a compact bitset.
  * ```ts
@@ -2731,7 +2863,7 @@ export function mappedTag<
 export function bitset<Names extends readonly string[]>(
   names: Names,
   pad = false,
-  strict = false
+  strict = true
 ): CoderType<Record<Names[number], boolean>> {
   if (typeof pad !== 'boolean')
     throw new TypeError(`bitset/pad: expected boolean, got ${typeof pad}`);
@@ -2996,11 +3128,9 @@ export const _TEST: {
   Path: {
     /**
      * Internal method for handling stack of paths (debug, errors, dynamic fields via path)
-     * This callback shape forces stack cleanup by construction:
      * `.pop()` always happens after the wrapped function.
-     * Also, this makes impossible:
-     * - pushing field when stack is empty
-     * - pushing field inside of field (real bug)
+     * Fields inside the object are tracked via Reader/Writer enterField()/exitField(),
+     * which the debugger overrides to observe per-field byte ranges.
      * NOTE: we don't want to do '.pop' on error!
      */
     pushObj: (stack: PathStack, obj: StructOut, objFn: _PathObjFn) => void;
