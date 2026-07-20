@@ -1,6 +1,6 @@
 {
   "name": "micro-packed",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Define complex binary structures using composable primitives",
   "files": [
     "index.js",
@@ -18,7 +18,7 @@
     "@scure/base": "~2.2.0"
   },
   "devDependencies": {
-    "@paulmillr/jsbt": "0.6.0",
+    "@paulmillr/jsbt": "0.6.1",
     "fast-check": "4.2.0",
     "prettier": "3.6.2",
     "typescript": "6.0.2"
