@@ -1,4 +1,4 @@
-import { describe, should } from '@paulmillr/jsbt/test.js';
+import { describe, it } from '@paulmillr/jsbt/test.js';
 import { hex } from '@scure/base';
 import { deepStrictEqual as eql, throws } from 'node:assert';
 import * as PD from '../src/debugger.ts';
@@ -10,7 +10,7 @@ const Writer = P._TEST._Writer;
 const toBytes = (s) => (typeof s === 'string' ? hex.decode(s) : s);
 const test = (name, v) => {
   describe(name, () => {
-    should('correct', () => {
+    it('correct', () => {
       for (const [expVal, expHex] of v.correct || []) {
         const encoded = v.p.encode(expVal);
         eql(hex.encode(encoded), expHex, 'encode');
@@ -20,10 +20,10 @@ const test = (name, v) => {
         eql(hex.encode(v.p.encode(decoded)), expHex, 'encode(decode)');
       }
     });
-    should('err values', () => {
+    it('err values', () => {
       for (const value of v.errValues || []) throws(() => v.p.encode(value));
     });
-    should('err hex', () => {
+    it('err hex', () => {
       for (const value of v.errHex || []) throws(() => v.p.decode(toBytes(value)));
     });
   });
@@ -169,7 +169,7 @@ describe('primitives', () => {
     ],
     errValues: [16777216 + 1, 2 ** 128],
   });
-  should('float NaN encodings are canonical', () => {
+  it('float NaN encodings are canonical', () => {
     const nan32 = new DataView(Uint8Array.of(0x7f, 0xc0, 0x00, 0x01).buffer).getFloat32(0, false);
     const nan64 = new DataView(
       Uint8Array.of(0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01).buffer
@@ -196,7 +196,7 @@ describe('primitives', () => {
     });
   });
 
-  should('bigint size', () => {
+  it('bigint size', () => {
     throws(() => P.bigint(0, false, false, true), {
       name: 'Error',
       message: 'bigint/size: wrong value 0',
@@ -240,7 +240,7 @@ describe('primitives', () => {
     eql(VarU64.decode(VarU64.encode(300n)), 300n);
     eql(VarU64.decode(VarU64.encode(2n ** 64n - 1n)), 2n ** 64n - 1n);
   });
-  should('int size', () => {
+  it('int size', () => {
     throws(() => P.int(0, true, false, false), {
       name: 'Error',
       message: 'int/size: wrong value 0',
@@ -250,7 +250,7 @@ describe('primitives', () => {
       message: 'int/size: wrong value -1',
     });
   });
-  should('sized bigint boundaries', () => {
+  it('sized bigint boundaries', () => {
     const run = (name: string, coder: P.CoderType<bigint>, values: bigint[]) =>
       values.map((value) => {
         const encoded = coder.encode(value);
@@ -725,7 +725,7 @@ describe('primitives', () => {
     throws(() => P.I256BE.decode(new Uint8Array(31)));
     throws(() => P.U64BE.decode(new Uint8Array(7)));
   });
-  should('signed unsized bigint', () => {
+  it('signed unsized bigint', () => {
     const run = (le: boolean) => {
       const coder = P.bigint(8, le, true, false, true);
       const values = [
@@ -844,7 +844,7 @@ describe('primitives', () => {
       });
     }
   });
-  should('signed unsized int', () => {
+  it('signed unsized int', () => {
     const run = (le: boolean) => {
       const coder = P.int(6, le, true, false, true);
       const values = [-(2 ** 47), -32768, -128, -1, 0, 127, 128, 255, 32767, 32768, 2 ** 47 - 1];
@@ -912,7 +912,7 @@ describe('primitives', () => {
       });
     }
   });
-  should('number typecheck', () => {
+  it('number typecheck', () => {
     throws(() => P.U64BE.encode(1.01));
     throws(() => P.U64BE.encode(1));
     throws(() => P.U64BE.encode(true));
@@ -948,7 +948,7 @@ describe('primitives', () => {
       correct: [[{ a: undefined, b: 0, c: 0 }, hex.encode(new Uint8Array([128, 0]))]],
       errHex: [new Uint8Array([0, 0])],
     });
-    should('length config', () => {
+    it('length config', () => {
       const zero = P.bits(0);
       eql(zero.encode(0), Uint8Array.of());
       eql(zero.decode(Uint8Array.of()), 0);
@@ -973,7 +973,7 @@ describe('structures', () => {
       p: P.padLeft(3, P.U8),
       correct: [[97, '000061']],
     });
-    should('left validates padding bytes', () => {
+    it('left validates padding bytes', () => {
       const zero = P.padLeft(3, P.U8);
       const custom = P.padLeft(4, P.U8, (i) => i + 1);
       eql(custom.decode(Uint8Array.of(1, 2, 3, 9)), 9);
@@ -990,7 +990,7 @@ describe('structures', () => {
         message: 'Reader(): padLeft: wrong padding byte at 0: 256',
       });
     });
-    should('left zero-size', () => {
+    it('left zero-size', () => {
       const constant = P.padLeft(4, P.constant(1));
       const bytes = P.padLeft(4, P.bytes(0));
       eql(
@@ -1025,7 +1025,7 @@ describe('structures', () => {
         ['aaaaaa', '616161616161000000'],
       ],
     });
-    should('right validates padding bytes', () => {
+    it('right validates padding bytes', () => {
       const zero = P.padRight(3, P.U8);
       const custom = P.padRight(4, P.U8, (i) => i + 1);
       eql(zero.decode(Uint8Array.of(97, 0, 0)), 97);
@@ -1043,7 +1043,7 @@ describe('structures', () => {
         message: 'Reader(): padRight: wrong padding byte at 0: 256',
       });
     });
-    should('right zero-size', () => {
+    it('right zero-size', () => {
       const constant = P.padRight(4, P.constant(1));
       const bytes = P.padRight(4, P.bytes(0));
       eql(
@@ -1077,7 +1077,7 @@ describe('structures', () => {
     p: P.struct({ a: P.U8, b: P.U16LE, c: P.string(P.U8) }),
     correct: [[{ a: 31, b: 12345, c: 'hello' }, '1f39300568656c6c6f']],
   });
-  should('struct inherited fields', () => {
+  it('struct inherited fields', () => {
     const fixed = Object.create({ inherited: P.U8 }) as {
       own: typeof P.U8;
       inherited: typeof P.U8;
@@ -1104,7 +1104,7 @@ describe('structures', () => {
     dynamic.own = P.U8;
     eql(P.struct(dynamic).size, undefined);
   });
-  should('struct restricted field names', () => {
+  it('struct restricted field names', () => {
     const proto = {};
     Object.defineProperty(proto, '__proto__', { value: P.U8, enumerable: true });
     for (const [name, fields] of [
@@ -1118,13 +1118,13 @@ describe('structures', () => {
       });
   });
   describe('bitset', () => {
-    should('basic', () => {
+    it('basic', () => {
       const flags = P.bitset(['a', 'b', 'c'], true);
       const value = { a: true, b: false, c: true };
       eql(flags.encode(value), Uint8Array.of(0b10100000));
       eql(flags.decode(Uint8Array.of(0b10100000)), value);
     });
-    should('invalid args', () => {
+    it('invalid args', () => {
       throws(() => P.bitset(['a'], 1 as any), {
         name: 'TypeError',
         message: 'bitset/pad: expected boolean, got number',
@@ -1142,7 +1142,7 @@ describe('structures', () => {
         message: 'bitset/names: expected array of strings',
       });
     });
-    should('names and values', () => {
+    it('names and values', () => {
       // Duplicate names are rejected by default; strict=false keeps legacy behavior
       throws(() => P.bitset(['_r', '_r', 'a'], true), {
         name: 'Error',
@@ -1164,7 +1164,7 @@ describe('structures', () => {
       });
       eql(flags.encode({ a: false, b: false }), Uint8Array.of(0));
     });
-    should('restricted names', () => {
+    it('restricted names', () => {
       for (const name of ['__proto__', 'constructor', 'prototype'])
         throws(() => P.bitset([name], true), {
           name: 'Error',
@@ -1179,7 +1179,7 @@ describe('structures', () => {
         message: 'bitset/names: name a..b cannot contain path parent ..',
       });
     });
-    should('padding bits', () => {
+    it('padding bits', () => {
       // Non-zero padding is a malleability vector: rejected by default,
       // strict=false keeps legacy behavior
       const legacyOne = P.bitset(['a'], true, false);
@@ -1216,7 +1216,7 @@ describe('structures', () => {
         h: true,
       });
     });
-    should('size', () => {
+    it('size', () => {
       const padded = P.bitset(['a', 'b', 'c', 'd'], true);
       const aligned = P.bitset(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
       const unaligned = P.bitset(['a', 'b', 'c', 'd']);
@@ -1257,7 +1257,7 @@ describe('structures', () => {
     });
   });
 
-  should('prefix', () => {
+  it('prefix', () => {
     // Should be same (elm size = 1 byte)
     const arr = P.array(P.U16BE, P.U8);
     const prefixed = P.prefix(P.U16BE, P.array(null, P.U8));
@@ -1282,7 +1282,7 @@ describe('structures', () => {
   });
 
   describe('array', () => {
-    should('basic', () => {
+    it('basic', () => {
       let arr = P.array(P.U8, P.U32LE);
       eql(
         arr.encode([1234, 5678, 9101112]),
@@ -1293,7 +1293,7 @@ describe('structures', () => {
       throws(() => arr.encode(big));
       arr.encode(big.slice(0, 255));
     });
-    should('invalid args', () => {
+    it('invalid args', () => {
       throws(() => P.array(1, 1 as any), {
         name: 'TypeError',
         message: 'array: invalid inner value 1',
@@ -1312,7 +1312,7 @@ describe('structures', () => {
         message: 'Reader(arrayLen): Wrong length: -1',
       });
     });
-    should('zero-size inner', () => {
+    it('zero-size inner', () => {
       const inner = P.array(0, P.U8);
       const outer = P.array(3, inner);
       const tuple = P.tuple([inner, outer]);
@@ -1383,7 +1383,7 @@ describe('structures', () => {
         message: 'array: dynamic length cannot use zero-size inner',
       });
     });
-    should('hostile length prefix fails fast', () => {
+    it('hostile length prefix fails fast', () => {
       // Claimed length is impossible for fixed-size elements: must throw before decoding elements.
       const arr = P.array(P.U32LE, P.U32LE);
       throws(() => arr.decode(Uint8Array.of(0xff, 0xff, 0xff, 0xff, 1, 2, 3, 4)), {
@@ -1404,7 +1404,7 @@ describe('structures', () => {
         P.array(P.U32LE, P.cstring).decode(Uint8Array.of(0xff, 0xff, 0xff, 0xff, 65, 0))
       );
     });
-    should('sz=null', () => {
+    it('sz=null', () => {
       const a = P.array(null, P.U16BE);
       const data = [1, 2, 3, 4, 5, 6, 7];
       eql(a.decode(a.encode(data)), data);
@@ -1445,7 +1445,7 @@ describe('structures', () => {
       );
     });
 
-    should('sz=fixed number', () => {
+    it('sz=fixed number', () => {
       const a = P.array(4, P.U16BE);
       // Throws if size different
       throws(() => a.encode([1]));
@@ -1455,7 +1455,7 @@ describe('structures', () => {
       eql(a.encode(data), new Uint8Array([0, 1, 0, 2, 0, 3, 0, 4]));
     });
 
-    should('sz=dynamic number', () => {
+    it('sz=dynamic number', () => {
       const a = P.array(P.U16LE, P.U16BE);
       // Works for different sizes
       eql(a.decode(a.encode([1])), [1]);
@@ -1464,7 +1464,7 @@ describe('structures', () => {
       eql(a.encode([1, 2, 3]), new Uint8Array([3, 0, 0, 1, 0, 2, 0, 3]));
     });
 
-    should('sz=path', () => {
+    it('sz=path', () => {
       const a = P.struct({
         len: P.U16LE,
         arr: P.array('len', P.U16BE),
@@ -1479,7 +1479,7 @@ describe('structures', () => {
       eql(a.encode({ len: 3, arr: [1, 2, 3] }), P.array(P.U16LE, P.U16BE).encode([1, 2, 3]));
     });
 
-    should('sz=bytes', () => {
+    it('sz=bytes', () => {
       throws(() => P.array(Uint8Array.of(), P.U8), {
         name: 'Error',
         message: 'lengthCoder: empty terminator',
@@ -1510,14 +1510,14 @@ describe('structures', () => {
     });
   });
   describe('bytes', () => {
-    should('sz=null', () => {
+    it('sz=null', () => {
       const a = P.bytes(null);
       const data = new Uint8Array([1, 2, 3]);
       eql(a.decode(a.encode(data)), data);
       eql(a.encode(data), new Uint8Array([1, 2, 3]));
     });
 
-    should('sz=fixed number', () => {
+    it('sz=fixed number', () => {
       const a = P.bytes(4);
       throws(() => P.bytes(-1), {
         name: 'Error',
@@ -1531,7 +1531,7 @@ describe('structures', () => {
       eql(a.encode(data), new Uint8Array([1, 2, 3, 4]));
     });
 
-    should('sz=dynamic number', () => {
+    it('sz=dynamic number', () => {
       const a = P.bytes(P.U16LE);
       // Works for different sizes
       eql(a.decode(a.encode(Uint8Array.of(1))), Uint8Array.of(1));
@@ -1540,7 +1540,7 @@ describe('structures', () => {
       eql(a.encode(new Uint8Array([1, 2, 3])), new Uint8Array([3, 0, 1, 2, 3]));
     });
 
-    should('sz=path', () => {
+    it('sz=path', () => {
       const a = P.struct({
         len: P.U16LE,
         arr: P.bytes('len'),
@@ -1567,7 +1567,7 @@ describe('structures', () => {
       );
     });
 
-    should('sz=bytes', () => {
+    it('sz=bytes', () => {
       throws(() => P.bytes(Uint8Array.of()), {
         name: 'Error',
         message: 'lengthCoder: empty terminator',
@@ -1608,7 +1608,7 @@ describe('structures', () => {
     });
   });
 
-  should('cstring', () => {
+  it('cstring', () => {
     eql(P.cstring.encode('test'), new Uint8Array([116, 101, 115, 116, 0]));
     eql(P.cstring.decode(P.cstring.encode('test')), 'test');
     eql(P.cstring.decode(Uint8Array.of(0)), '');
@@ -1618,7 +1618,7 @@ describe('structures', () => {
     // Early terminator
     throws(() => P.cstring.decode(new Uint8Array([116, 101, 0, 115, 116])));
   });
-  should('string terminator', () => {
+  it('string terminator', () => {
     const nul = P.string(Uint8Array.of(0));
     eql(nul.decode(nul.encode('test')), 'test');
     throws(() => nul.encode('\0'), /bytes: value contains terminator/);
@@ -1632,7 +1632,7 @@ describe('structures', () => {
     eql(le.decode(le.encode('test')), 'test');
     throws(() => le.encode('a\0'), /bytes: value contains terminator/);
   });
-  should('path empty fields', () => {
+  it('path empty fields', () => {
     const path = P._TEST.Path;
     eql([path.path([]), path.path([{ obj: {}, field: '' }])], ['', '""']);
     const inner = P.validate(P.U8, () => {
@@ -1644,7 +1644,7 @@ describe('structures', () => {
       message: 'Reader(""): leaf',
     });
   });
-  should('path field separators', () => {
+  it('path field separators', () => {
     throws(() => P.struct({ 'a/b': P.U8 }), {
       name: 'TypeError',
       message: 'struct: field a/b cannot contain path separator /',
@@ -1658,7 +1658,7 @@ describe('structures', () => {
       message: 'struct: field a..b cannot contain path parent ..',
     });
   });
-  should('pathStack', () => {
+  it('pathStack', () => {
     const log = [];
     // JSON as quick cloneDeep
     // Array/tuple indices live on the stack as numbers (stringified lazily for errors/debugger);
@@ -2068,7 +2068,7 @@ describe('structures', () => {
     );
   });
   describe('control flow', () => {
-    should('struct path', () => {
+    it('struct path', () => {
       let s1 = P.struct({
         sub1: P.struct({ someLen: P.U8 }),
         f2: P.string('sub1/someLen'),
@@ -2088,7 +2088,7 @@ describe('structures', () => {
       );
       throws(() => s2.encode({ sub1: { someLen: 6 }, sub2: { f2: 'hello' } }));
     });
-    should('flag', () => {
+    it('flag', () => {
       throws(() => P.flag(Uint8Array.of()), {
         name: 'Error',
         message: 'flag/flagValue: empty marker',
@@ -2125,7 +2125,7 @@ describe('structures', () => {
       eql(snap.decode(Uint8Array.of(5, 6)), true);
     });
 
-    should('flagged', () => {
+    it('flagged', () => {
       const s = P.struct({ f: P.flag(new Uint8Array([0x0, 0x1])), f2: P.flagged('f', P.U32BE) });
       eql(s.encode({ f2: 1234 }), Uint8Array.of());
       eql(s.encode({ f: true, f2: 1234 }), new Uint8Array([0, 1, 0, 0, 4, 210]));
@@ -2169,7 +2169,7 @@ describe('structures', () => {
       eql(s4.decode(new Uint8Array([0x0, 0x0, 0x0, 0x4])), 0x4);
       throws(() => s4.decode(new Uint8Array([0x0, 0x1, 0x2])));
     });
-    should('optional', () => {
+    it('optional', () => {
       const flag = P.flag(new Uint8Array([0x0, 0x1]));
       const u8 = P.optional(flag, P.U8);
       eql(u8.encode(0), new Uint8Array([0x0, 0x1, 0x0]));
@@ -2195,7 +2195,7 @@ describe('structures', () => {
       eql(bool.encode(false), new Uint8Array([0x0, 0x1, 0x0]));
       eql(bool.decode(new Uint8Array([0x0, 0x1, 0x0])), false);
     });
-    should('default slot rejects non-default bytes', () => {
+    it('default slot rejects non-default bytes', () => {
       // Absent-flag default slots are a malleability carrier if not validated:
       // any parseable inner encoding used to be silently accepted and discarded.
       const opt = P.optional(P.bool, P.U32BE, 123);
@@ -2230,7 +2230,7 @@ describe('structures', () => {
         message: 'Reader(): default: invalid value 1,3 !== 1,2',
       });
     });
-    should('default slot accepts NaN default', () => {
+    it('default slot accepts NaN default', () => {
       const coder = P.optional(P.bool, P.F64BE, NaN);
       eql(coder.decode(coder.encode(undefined)), undefined);
     });
@@ -2305,7 +2305,7 @@ describe('structures', () => {
   });
 
   describe('utils', () => {
-    should('map', () => {
+    it('map', () => {
       const e = P.map(P.U8, { test: 5, other: 9 });
       eql(e.encode('test'), new Uint8Array([5]));
       eql(e.decode(e.encode('test')), 'test');
@@ -2356,7 +2356,7 @@ describe('structures', () => {
         message: 'Writer(): Map: unknown variant: toString',
       });
     });
-    should('mappedTag', () => {
+    it('mappedTag', () => {
       const value = P.mappedTag(P.U8, { one: [1, P.U8], two: [2, P.U16BE] });
       eql(value.encode({ TAG: 'one', data: 5 }), Uint8Array.of(1, 5));
       eql(value.decode(Uint8Array.of(2, 0, 5)), { TAG: 'two', data: 5 });
@@ -2447,7 +2447,7 @@ describe('structures', () => {
       });
     });
 
-    should('hex', () => {
+    it('hex', () => {
       const h = P.apply(P.bytes(P.U16BE), hex);
       const data = '01020304';
       eql(h.decode(h.encode(data)), data);
@@ -2470,7 +2470,7 @@ describe('structures', () => {
       });
     });
 
-    should('dict', () => {
+    it('dict', () => {
       const coder = P.array(P.U16BE, P.tuple([P.cstring, P.U32LE]));
       const h = P.apply(coder, P.coders.dict());
       const data = { lol: 1, blah: 2 };
@@ -2558,7 +2558,7 @@ describe('structures', () => {
       });
     });
 
-    should('lazy', () => {
+    it('lazy', () => {
       // Allows creating circular structures
       const tree = P.struct({
         name: P.cstring,
@@ -2579,7 +2579,7 @@ describe('structures', () => {
       ];
       for (const c of CASES) eql(tree.decode(tree.encode(c)), c);
     });
-    should('validate', () => {
+    it('validate', () => {
       let t = (n) => {
         if (n > 100) throw new Error('N > 100');
         return n;
@@ -2590,7 +2590,7 @@ describe('structures', () => {
       throws(() => c.encode(101));
       throws(() => c.decode(new Uint8Array([101])));
     });
-    should('validator constructors', () => {
+    it('validator constructors', () => {
       throws(() => P.apply(123 as any, hex), {
         name: 'TypeError',
         message: 'apply: invalid inner value 123',
@@ -2626,7 +2626,7 @@ describe('structures', () => {
       throws(() => P.bytes(1, 1 as any), TypeError);
       throws(() => P.bytes(null).encode('x' as any), TypeError);
     });
-    should('constant size', () => {
+    it('constant size', () => {
       const constant = P.constant(123);
       const struct = P.struct({ a: constant, b: P.U8 });
       const tuple = P.tuple([constant, P.U8]);
@@ -2654,7 +2654,7 @@ describe('structures', () => {
         }
       );
     });
-    should('magic check flag', () => {
+    it('magic check flag', () => {
       const scalar = P.magic(P.U8, 1, false);
       const bytes = P.magic(P.bytes(2), Uint8Array.of(1, 2), false);
       const object = { a: 1 };
@@ -2704,7 +2704,7 @@ describe('structures', () => {
       eql(snap.encode(undefined), Uint8Array.of(1, 2));
       eql(snap.decode(Uint8Array.of(1, 2)), undefined);
     });
-    should('constructor type errors', () => {
+    it('constructor type errors', () => {
       const marker = Uint8Array.of(0, 1);
       throws(() => P.constant(123).encode(124), {
         name: 'TypeError',
@@ -2831,7 +2831,7 @@ describe('structures', () => {
         message: 'tuple: field 1 is not CoderType',
       });
     });
-    should('debug', () => {
+    it('debug', () => {
       const s = PD.debug(
         P.struct({
           name: PD.debug(P.cstring),
@@ -2851,7 +2851,7 @@ describe('structures', () => {
       };
       eql(s.decode(s.encode(data)), data);
     });
-    should('isPlainObject', () => {
+    it('isPlainObject', () => {
       eql(P.utils.isPlainObject({}), true);
       eql(P.utils.isPlainObject(null), false);
       eql(P.utils.isPlainObject([]), false);
@@ -2861,7 +2861,7 @@ describe('structures', () => {
 });
 
 describe('coders', () => {
-  should('number', () => {
+  it('number', () => {
     eql(P.coders.numberBigint.encode(1000n), 1000);
     eql(P.coders.numberBigint.encode(9007199254740991n), 9007199254740991);
     eql(P.coders.numberBigint.encode(-9007199254740991n), -9007199254740991);
@@ -2887,7 +2887,7 @@ describe('coders', () => {
     }
   });
 
-  should('tsEnum', () => {
+  it('tsEnum', () => {
     const Color = { 0: 'Red', 1: 'Green', Red: 0, Green: 1 };
     const base = P.coders.tsEnum(Color);
     const coder = P.apply(P.U8, base);
@@ -2903,7 +2903,7 @@ describe('coders', () => {
     }
   });
 
-  should('decimal', () => {
+  it('decimal', () => {
     const d8 = P.coders.decimal(8);
     eql(d8.decode('6.30880845'), 630880845n);
     eql(d8.decode('6.308'), 630800000n);
@@ -3033,7 +3033,7 @@ describe('coders', () => {
     throws(() => d0.decode('1.1'));
   });
 
-  should('reverse', () => {
+  it('reverse', () => {
     const coder = {
       n: 7,
       encode(v: number) {
@@ -3060,7 +3060,7 @@ describe('coders', () => {
     );
   });
 
-  should('match', () => {
+  it('match', () => {
     const m1 = {
       encode(from) {
         if (from.type === 't1') return 1;
@@ -3153,7 +3153,7 @@ describe('coders', () => {
 });
 
 describe('utils', () => {
-  should('sizeof', () => {
+  it('sizeof', () => {
     const s0 = P.array(0, P.U32LE);
     const s1 = P.array(1, P.U8);
     const s4 = P.U32LE;
@@ -3172,7 +3172,7 @@ describe('utils', () => {
     eql(P.struct({ f1: s1 }).size, 1);
     eql(P.struct({ f1: s1, f2: s0, f3: s1, f4: s0, f5: s1 }).size, 3);
   });
-  should('numeric guards', () => {
+  it('numeric guards', () => {
     const malformed = {
       size: -1,
       encode: (value: number) => Uint8Array.of(value),
@@ -3207,7 +3207,7 @@ describe('utils', () => {
     throws(() => P._TEST._padLength(8, -1));
     throws(() => P._TEST._padLength(8, -8));
   });
-  should('findBytes', () => {
+  it('findBytes', () => {
     const find = P._TEST._findBytes;
     const repeated = Uint8Array.of(1, 1, 1, 2);
     eql(
@@ -3235,31 +3235,31 @@ describe('utils', () => {
   });
   describe('Reader', () => {
     describe('bits', () => {
-      should('basic', () => {
+      it('basic', () => {
         const u = new Reader(new Uint8Array([152, 0]));
         eql([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 0, 6, 0]);
         eql(u.byte(), 0);
         eql(u.isEnd(), true);
       });
 
-      should('u32', () => {
+      it('u32', () => {
         eql(new Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff])).bits(32), 2 ** 32 - 1);
       });
 
-      should('full mask', () => {
+      it('full mask', () => {
         const u = new Reader(new Uint8Array([0xff]));
         eql([u.bits(1), u.bits(1), u.bits(4), u.bits(2)], [1, 1, 15, 3]);
         eql(u.isEnd(), true);
       });
 
-      should('u32 mask', () => {
+      it('u32 mask', () => {
         const u = new Reader(new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010, 0]));
         for (let i = 0; i < 32; i++) eql(u.bits(1), +!(i & 1));
         eql(u.byte(), 0);
         eql(u.isEnd(), true);
       });
 
-      should('throw on non-full (1 byte)', () => {
+      it('throw on non-full (1 byte)', () => {
         const r = new Reader(new Uint8Array([0xff, 0]));
         r.bits(7);
         throws(() => r.byte());
@@ -3271,7 +3271,7 @@ describe('utils', () => {
         eql(r.isEnd(), true);
       });
 
-      should('throw on non-full (4 byte)', () => {
+      it('throw on non-full (4 byte)', () => {
         const r = new Reader(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0]));
         r.bits(31);
         throws(() => r.byte());
@@ -3283,12 +3283,12 @@ describe('utils', () => {
         eql(r.isEnd(), true);
       });
 
-      should('empty array', () => {
+      it('empty array', () => {
         throws(() => new Reader(Uint8Array.of()).bits(1), '1');
         throws(() => new Reader(Uint8Array.of()).bits(8), '8');
         throws(() => new Reader(Uint8Array.of()).bits(32), '32');
       });
-      should('byte empty label', () => {
+      it('byte empty label', () => {
         throws(() => new Reader(Uint8Array.of()).byte(), {
           name: 'Error',
           message: 'Reader(): readByte: Unexpected end of buffer',
@@ -3298,7 +3298,7 @@ describe('utils', () => {
           message: 'Reader(): readByte: Unexpected end of buffer',
         });
       });
-      should('invalid lengths', () => {
+      it('invalid lengths', () => {
         for (const bits of [-1, 1.5]) {
           const r = new Reader(Uint8Array.of(0xff, 0));
           throws(() => r.bits(bits), {
@@ -3308,7 +3308,7 @@ describe('utils', () => {
           eql({ pos: r.pos, left: r.leftBytes }, { pos: 0, left: 2 });
         }
       });
-      should('multiple read position', () => {
+      it('multiple read position', () => {
         const r = new Reader(Uint8Array.of(1, 2, 3, 4), {});
         r._enablePointers();
         r.markBytes(2);
@@ -3327,7 +3327,7 @@ describe('utils', () => {
       });
     });
 
-    should('find', () => {
+    it('find', () => {
       const r = new Reader(new Uint8Array([0xfa, 0xfb, 0xfc, 0xfd, 0]));
       // Basic
       eql(r.find(new Uint8Array([0xfa])), 0);
@@ -3365,7 +3365,7 @@ describe('utils', () => {
         message: 'Reader(): find: bitPos not empty',
       });
     });
-    should('invalid lengths and offsets', () => {
+    it('invalid lengths and offsets', () => {
       {
         throws(() => new Reader([1] as any), {
           name: 'TypeError',
@@ -3456,7 +3456,7 @@ describe('utils', () => {
   });
 
   describe('Writer', () => {
-    should('bits: basic', () => {
+    it('bits: basic', () => {
       let w = new Writer();
       w.bits(1, 1);
       w.bits(0, 1);
@@ -3465,7 +3465,7 @@ describe('utils', () => {
       eql(w.finish(), new Uint8Array([152]));
     });
 
-    should('bits: full mask', () => {
+    it('bits: full mask', () => {
       let w = new Writer();
       w.bits(1, 1);
       w.bits(1, 1);
@@ -3474,13 +3474,13 @@ describe('utils', () => {
       eql(w.finish(), new Uint8Array([0xff]));
     });
 
-    should('bits: u32 single', () => {
+    it('bits: u32 single', () => {
       let w = new Writer();
       w.bits(2 ** 32 - 1, 32);
       eql(w.finish(), new Uint8Array([0xff, 0xff, 0xff, 0xff]));
     });
 
-    should('bits: u32 partial', () => {
+    it('bits: u32 partial', () => {
       let w = new Writer();
       w.bits(0xff, 8);
       for (let i = 0; i < 8; i++) w.bits(1, 1);
@@ -3488,13 +3488,13 @@ describe('utils', () => {
       eql(w.finish(), new Uint8Array([0xff, 0xff, 0xff, 0xff]));
     });
 
-    should('bits: u32 mask', () => {
+    it('bits: u32 mask', () => {
       let w = new Writer();
       for (let i = 0; i < 32; i++) w.bits(+!(i & 1), 1);
       eql(w.finish(), new Uint8Array([0b10101010, 0b10101010, 0b10101010, 0b10101010]));
     });
 
-    should('bits: throw on non-full (1 byte)', () => {
+    it('bits: throw on non-full (1 byte)', () => {
       let w = new Writer();
       w.bits(0, 7);
       throws(() => w.finish());
@@ -3506,7 +3506,7 @@ describe('utils', () => {
       eql(w.finish(), new Uint8Array([0, 1, 2, 3]));
     });
 
-    should('bits: throw on non-full (4 byte)', () => {
+    it('bits: throw on non-full (4 byte)', () => {
       let w = new Writer();
       w.bits(0, 31);
       throws(() => w.finish());
@@ -3517,7 +3517,7 @@ describe('utils', () => {
       w.bytes(new Uint8Array([2, 3]));
       eql(w.finish(), new Uint8Array([0, 0, 0, 0, 1, 2, 3]));
     });
-    should('bits: invalid input', () => {
+    it('bits: invalid input', () => {
       for (const [value, bits] of [
         [0, -1],
         [1, 1.5],
@@ -3544,7 +3544,7 @@ describe('utils', () => {
         throws(() => coder.encode(value));
       }
     });
-    should('byte: invalid input', () => {
+    it('byte: invalid input', () => {
       const coder = P.wrap({
         encodeStream: (w, value: number) => w.byte(value),
         decodeStream: (r) => r.byte(),
@@ -3556,7 +3556,7 @@ describe('utils', () => {
         throws(() => coder.encode(value));
       }
     });
-    should('bytes: invalid input', () => {
+    it('bytes: invalid input', () => {
       const coder = P.wrap({
         encodeStream: (w) => w.bytes([1] as any),
         decodeStream: (r) => r.byte(),
@@ -3572,7 +3572,7 @@ describe('utils', () => {
         message: 'Writer(): writeBytes: expected Uint8Array, got object',
       });
     });
-    should('error prefix and finished state', () => {
+    it('error prefix and finished state', () => {
       const err = new Writer().err('boom');
       eql({ name: err.name, message: err.message }, { name: 'Error', message: 'Writer(): boom' });
       const coder = P.wrap({
@@ -3601,7 +3601,7 @@ describe('utils', () => {
         });
       }
     });
-    should('finish: clean owned buffers', () => {
+    it('finish: clean owned buffers', () => {
       // Writer-owned scratch lives in chunks (buffers[] holds {chunk,start,end} runs for them);
       // finish() must zeroize the chunks while leaving caller-provided buffers untouched.
       const byte = new Writer();
@@ -3645,7 +3645,7 @@ describe('utils', () => {
         }
       );
     });
-    should('writer: interleaved carved and caller buffers', () => {
+    it('writer: interleaved carved and caller buffers', () => {
       // byte()/writeView() carve runs out of shared chunks; bytes() splices caller buffers
       // between them by reference. Output order must match write order.
       const w = new Writer();
@@ -3656,7 +3656,7 @@ describe('utils', () => {
       w.byte(7);
       eql(w.finish(), Uint8Array.of(1, 2, 3, 4, 5, 6, 7));
     });
-    should('writer: chunk boundary crossings', () => {
+    it('writer: chunk boundary crossings', () => {
       // 3-byte elements never divide the chunk sizes (64/512/4096), forcing carve() to seal
       // chunks with unused tails; 6000 bytes crosses several chunk generations.
       const coder = P.array(null, P.int(3, false));
@@ -3671,7 +3671,7 @@ describe('utils', () => {
       const out = w.finish();
       eql([out.length, out[0], out[4], out[10003], out[10004]], [10005, 0xde, 0x42, 0x42, 0x99]);
     });
-    should('writeView: invalid length', () => {
+    it('writeView: invalid length', () => {
       const w = new Writer();
       let called = false;
       throws(
@@ -3697,7 +3697,7 @@ describe('utils', () => {
         bs[chunk] |= mask;
       }
     };
-    should('new', () => {
+    it('new', () => {
       eql(bitset.create(0).length, 0);
       eql(bitset.create(1).length, 1);
       eql(bitset.create(32).length, 1);
@@ -3708,7 +3708,7 @@ describe('utils', () => {
       eql(bitset.create(96).length, 3);
       eql(bitset.create(97).length, 4);
     });
-    should('invalid numeric input', () => {
+    it('invalid numeric input', () => {
       const bs = bitset.create(10);
       throws(() => bitset.chunkLen(10, 5, -1));
       throws(() => bitset.setRange(bs, 10, 5, -1));
@@ -3717,7 +3717,7 @@ describe('utils', () => {
       throws(() => bitset.indices(new Uint32Array(0), -1));
       throws(() => bitset.rangeDebug(new Uint32Array(0), -1));
     });
-    should('setRangeBasic', () => {
+    it('setRangeBasic', () => {
       const LEN = 95;
       let bs = bitset.create(LEN);
       const t = (pos, len, exp) => {
@@ -3793,7 +3793,7 @@ describe('utils', () => {
         '00000000000000000000000000000000',
       ]);
     });
-    should('setRangeBasic160', () => {
+    it('setRangeBasic160', () => {
       const LEN = 160;
       let bs = bitset.create(LEN);
       const t = (pos, len, exp) => {
@@ -3825,7 +3825,7 @@ describe('utils', () => {
         ])
       );
     });
-    should('indices', () => {
+    it('indices', () => {
       const LEN = 95;
       const bs = bitset.create(LEN);
       const t = (pos, len, exp) => {
@@ -3843,7 +3843,7 @@ describe('utils', () => {
       throws(() => t(94, 2, [94]));
       throws(() => t(95, 1, [94]));
     });
-    should('ranges', () => {
+    it('ranges', () => {
       const LEN = 95;
       const bs = bitset.create(LEN);
       setRangeBasic(bs, LEN, 0, 5);
@@ -3923,7 +3923,7 @@ describe('utils', () => {
         ]
       );
     });
-    should('setRange', () => {
+    it('setRange', () => {
       const LEN = 95;
       const bs = bitset.create(LEN);
       const t = (pos, len, exp) => {
@@ -3994,7 +3994,7 @@ describe('utils', () => {
         '00000000000000000000000000000000',
       ]);
     });
-    should('setRange zero length', () => {
+    it('setRange zero length', () => {
       const LEN = 33;
       const initial = Uint32Array.of(0x80000000, 0x80000000);
       for (const pos of [0, 5, 32, 33]) {
@@ -4005,7 +4005,7 @@ describe('utils', () => {
         }
       }
     });
-    should('setRange bruteforce', () => {
+    it('setRange bruteforce', () => {
       const LEN = 160;
       const bs = bitset.create(LEN);
       for (let pos = 0; pos < LEN; pos++) {
@@ -4021,7 +4021,7 @@ describe('utils', () => {
         }
       }
     });
-    should('setRange rewrite', () => {
+    it('setRange rewrite', () => {
       const LEN = 95;
       const bs = bitset.create(LEN);
       eql(bitset.setRange(bs, LEN, 0, 5, false), true);
@@ -4053,4 +4053,4 @@ describe('utils', () => {
   });
 });
 
-should.runWhen(import.meta.url);
+it.runWhen(import.meta.url);

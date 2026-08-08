@@ -1,4 +1,4 @@
-import { describe, should } from '@paulmillr/jsbt/test.js';
+import { describe, it } from '@paulmillr/jsbt/test.js';
 import * as fc from 'fast-check';
 import { deepStrictEqual, throws } from 'node:assert';
 import { hex, utils } from '../src/index.ts';
@@ -20,7 +20,7 @@ describe('utils', () => {
     { bytes: Uint8Array.from([0xca, 0xfe]), hex: 'cafe' },
     { bytes: Uint8Array.from(new Array(1024).fill(0x69)), hex: '69'.repeat(1024) },
   ];
-  should('hexToBytes', () => {
+  it('hexToBytes', () => {
     for (let v of staticHexVectors) deepStrictEqual(hexToBytes(v.hex), v.bytes);
     for (let v of staticHexVectors) deepStrictEqual(hexToBytes(v.hex.toUpperCase()), v.bytes);
     for (let [v, repr] of getTypeTests()) {
@@ -28,14 +28,14 @@ describe('utils', () => {
       throws(() => hexToBytes(v));
     }
   });
-  should('bytesToHex', () => {
+  it('bytesToHex', () => {
     for (let v of staticHexVectors) deepStrictEqual(bytesToHex(v.bytes), v.hex);
     for (let [v, repr] of getTypeTests()) {
       if (repr.startsWith('ui8a')) continue;
       throws(() => bytesToHex(v));
     }
   });
-  should('hexToBytes <=> bytesToHex roundtrip', () =>
+  it('hexToBytes <=> bytesToHex roundtrip', () =>
     fc.assert(
       fc.property(hexString, (hex) => {
         if (hex.length % 2 !== 0) return;
@@ -43,9 +43,8 @@ describe('utils', () => {
         deepStrictEqual(hex, bytesToHex(hexToBytes(hex.toUpperCase())));
         deepStrictEqual(hexToBytes(hex), Uint8Array.from(Buffer.from(hex, 'hex')));
       })
-    )
-  );
-  should('concatBytes', () => {
+    ));
+  it('concatBytes', () => {
     const a = 1;
     const b = 2;
     const c = 0xff;
@@ -65,7 +64,7 @@ describe('utils', () => {
       });
     }
   });
-  should('concatBytes random', () =>
+  it('concatBytes random', () =>
     fc.assert(
       fc.property(fc.uint8Array(), fc.uint8Array(), fc.uint8Array(), (a, b, c) => {
         const expected = Uint8Array.from(Buffer.concat([a, b, c]));
@@ -74,8 +73,7 @@ describe('utils', () => {
           expected
         );
       })
-    )
-  );
+    ));
 });
 
-should.runWhen(import.meta.url);
+it.runWhen(import.meta.url);

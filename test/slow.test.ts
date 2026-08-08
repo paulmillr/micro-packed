@@ -1,4 +1,4 @@
-import { describe, should } from '@paulmillr/jsbt/test.js';
+import { describe, it } from '@paulmillr/jsbt/test.js';
 import { deepStrictEqual } from 'node:assert';
 import * as P from '../src/index.ts';
 
@@ -7,7 +7,7 @@ const MB = 1024 * KB;
 const GB = 1024 * MB;
 
 describe('slow', () => {
-  should('5gb', () => {
+  it('5gb', () => {
     const ptr = P.apply(P.U64LE, P.coders.numberBigint);
     const complex = P.struct({
       a: P.U16BE,
@@ -42,4 +42,4 @@ describe('slow', () => {
   });
 });
 
-should.runWhen(import.meta.url);
+it.runWhen(import.meta.url);

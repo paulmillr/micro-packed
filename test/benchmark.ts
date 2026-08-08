@@ -1,4 +1,4 @@
-import mark from '@paulmillr/jsbt/bench.js';
+import mark from '@paulmillr/jsbt/benchmark.js';
 import * as P from '../src/index.ts';
 
 const SAMPLES = 1000;
