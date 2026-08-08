@@ -5,12 +5,8 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "index.js.map",
-    "index.d.ts.map",
     "debugger.js",
     "debugger.d.ts",
-    "debugger.js.map",
-    "debugger.d.ts.map",
     "src/index.ts",
     "src/debugger.ts"
   ],
@@ -18,22 +14,20 @@
     "@scure/base": "~2.2.0"
   },
   "devDependencies": {
-    "@paulmillr/jsbt": "0.6.1",
+    "@paulmillr/jsbt": "0.6.5",
     "fast-check": "4.2.0",
     "prettier": "3.6.2",
     "typescript": "6.0.2"
   },
   "scripts": {
-    "bench": "node test/benchmark.ts noble",
-    "bench:all": "node test/benchmark.ts",
+    "benchmark": "node test/benchmark.ts noble",
+    "benchmark:all": "node test/benchmark.ts",
+    "benchmark:size": "jsbt size",
+    "benchmark:size": "npx bismar@0.1.1 -s",
     "build": "tsc",
-    "bundle": "npx --no @paulmillr/jsbt bundle",
-    "check": "npx --no @paulmillr/jsbt check",
+    "check": "jsbt-check",
     "format": "prettier --write src test",
     "test": "node test/index.ts",
-    "test:bun": "bun test/index.ts",
-    "test:deno": "deno --allow-env --allow-read test/index.ts",
-    "test:node20": "cd test; npx tsc; node compiled/test/index.js",
     "test:slow": "node test/slow.test.ts"
   },
   "exports": {
