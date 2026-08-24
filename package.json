@@ -11,10 +11,10 @@
     "src/debugger.ts"
   ],
   "dependencies": {
-    "@scure/base": "~2.3.0"
+    "@scure/base": "2.3.0"
   },
   "devDependencies": {
-    "@paulmillr/jsbt": "0.7.0",
+    "@paulmillr/jsbt": "0.7.1",
     "bismar": "0.1.8",
     "fast-check": "4.2.0",
     "prettier": "3.9.6",
