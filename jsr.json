@@ -1,12 +1,12 @@
 {
   "name": "@paulmillr/micro-packed",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "exports": {
     ".": "./src/index.ts",
     "./debugger.js": "./src/debugger.ts"
   },
   "imports": {
-    "@scure/base": "jsr:@scure/base@~2.3.0"
+    "@scure/base": "jsr:@scure/base@2.4.0"
   },
   "publish": {
     "include": [

@@ -1,6 +1,6 @@
 # Changelog for micro-packed
 
-## 0.11.1 (2026-08-27)
+## 0.11.1 (2026-08-29)
 
 - Update scure-base to 2.4
 
